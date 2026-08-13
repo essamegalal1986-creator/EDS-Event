@@ -306,14 +306,32 @@ const STORAGE_KEY = "eds_console_state_v1";
 const ADMIN_ID = "admin";
 const DEFAULT_ADMIN_PASSWORD = "admin123";
 
+/* Persistence: plain browser localStorage — works on GitHub Pages / any static
+   host, no backend needed. Scoped per browser + device + origin, so it
+   survives reloads and redeploys of this same file as long as it's served
+   from the same URL. It does NOT sync between different browsers/devices —
+   use Backup & Restore (Users tab) to move data between them. */
+function storageAvailable(){
+  try{
+    const t = "__eds_storage_test__";
+    localStorage.setItem(t, "1");
+    localStorage.removeItem(t);
+    return true;
+  }catch(e){ return false; }
+}
+
 async function loadState(){
   try{
-    const res = await window.storage.get(STORAGE_KEY, false);
-    if(res && res.value){
-      const parsed = JSON.parse(res.value);
-      STATE = Object.assign(STATE, parsed);
+    if(storageAvailable()){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        STATE = Object.assign(STATE, parsed);
+      }
+    } else {
+      console.warn("localStorage is unavailable — data will not persist between visits.");
     }
-  }catch(e){ /* no saved state yet */ }
+  }catch(e){ console.error("Storage load error", e); }
   if(!Array.isArray(STATE.products) || STATE.products.length === 0){
     STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
   }
@@ -336,9 +354,25 @@ function hasAccess(tabId){
 }
 async function saveState(){
   try{
-    await window.storage.set(STORAGE_KEY, JSON.stringify(STATE), false);
-  }catch(e){ console.error("Storage error", e); }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE));
+    return true;
+  }catch(e){
+    console.error("Storage error", e);
+    showSaveError();
+    return false;
+  }
 }
+
+let saveErrorShown = false;
+function showSaveError(){
+  if(saveErrorShown) return;
+  saveErrorShown = true;
+  const banner = document.createElement("div");
+  banner.textContent = "⚠ Couldn't save your last change in this browser (storage may be full, disabled, or in private mode). Download a backup from Users → Backup & Restore so nothing is lost.";
+  banner.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#a83a2c;color:#fff;padding:10px 16px;text-align:center;font-size:13px;font-weight:600;z-index:9999;";
+  document.body.appendChild(banner);
+}
+
 
 /* ============================= HELPERS ============================= */
 function fmtEGP(n){
@@ -513,7 +547,7 @@ function renderLogin(app){
   const nameInput = document.getElementById("login-name");
   const passInput = document.getElementById("login-password");
   const errBox = document.getElementById("login-error");
-  function attempt(){
+  async function attempt(){
     const name = nameInput.value.trim().toLowerCase();
     const pass = passInput.value;
     const match = STATE.users.find(u=> u.name.trim().toLowerCase()===name && (u.password||"")===pass);
@@ -525,7 +559,7 @@ function renderLogin(app){
     STATE.currentUserId = match.id;
     activeTab = TABS.find(t=>hasAccess(t.id)) ? (hasAccess("dashboard")?"dashboard":TABS.find(t=>hasAccess(t.id)).id) : "dashboard";
     document.getElementById("app-header").style.display = "block";
-    saveState();
+    await saveState();
     render();
   }
   document.getElementById("login-btn").addEventListener("click", attempt);
@@ -1433,7 +1467,7 @@ function renderUsers(app){
       <p class="section-desc">Create a user with a name, password, and exactly which sections they can see. They'll log in with those on the login screen. Only the real Admin login can preview other users' views via "Viewing as".</p>
       <div id="user-list"></div>
     </section>
-    <section>
+    <section style="margin-bottom:26px;">
       <div class="card" style="max-width:520px;">
         <h3 style="margin:0 0 12px;font-size:13.5px;">Add user</h3>
         <div class="grid cols-2">
@@ -1447,6 +1481,19 @@ function renderUsers(app){
           `).join("")}
         </div>
         <button class="btn primary" id="nu-save">Add user</button>
+      </div>
+    </section>
+    <section>
+      <div class="card" style="max-width:520px;">
+        <h3 style="margin:0 0 4px;font-size:13.5px;">Backup &amp; restore</h3>
+        <p style="margin:0 0 12px;color:var(--ink-soft);font-size:12px;">Everything (orders, payments, delivery status, catalog, users) is saved in this browser's local storage, tied to this device and browser only — it won't show up if you open the site on a different computer or browser. Download a backup regularly and use Restore to move data between devices or recover it if storage is ever cleared.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn ghost" id="backup-download">Download backup (.json)</button>
+          <label class="btn ghost" for="backup-file" style="cursor:pointer;">Restore from backup
+            <input type="file" id="backup-file" accept="application/json" style="display:none;">
+          </label>
+        </div>
+        <div id="backup-msg" style="margin-top:10px;font-size:12.5px;"></div>
       </div>
     </section>
   `;
@@ -1512,6 +1559,41 @@ function renderUsers(app){
     await saveState();
     alert("Password updated.");
   }));
+
+  const backupMsg = document.getElementById("backup-msg");
+  document.getElementById("backup-download").addEventListener("click", ()=>{
+    const payload = JSON.stringify(STATE, null, 2);
+    const blob = new Blob([payload], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    a.href = url; a.download = `eds-console-backup-${stamp}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    backupMsg.innerHTML = `<span style="color:var(--ok);">Backup downloaded.</span>`;
+  });
+  document.getElementById("backup-file").addEventListener("change", async e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if(!parsed || typeof parsed !== "object" || !Array.isArray(parsed.sales) || !Array.isArray(parsed.users)){
+        throw new Error("This file doesn't look like an EDS Console backup.");
+      }
+      if(!confirm("Replace all current data with this backup? This can't be undone.")) { e.target.value=""; return; }
+      STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},products:[],users:[],currentUserId:""}, parsed);
+      if(!Array.isArray(STATE.products) || STATE.products.length===0) STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
+      if(!Array.isArray(STATE.users) || STATE.users.length===0) STATE.users = [{id:ADMIN_ID,name:"Admin",password:DEFAULT_ADMIN_PASSWORD,access:TABS.map(t=>t.id)}];
+      rebuildIndexes();
+      await saveState();
+      backupMsg.innerHTML = `<span style="color:var(--ok);">Backup restored — ${STATE.sales.length} sale lines loaded.</span>`;
+      renderUsers(app);
+    }catch(err){
+      backupMsg.innerHTML = `<span style="color:var(--danger);">Couldn't restore: ${escapeHtml(err.message||String(err))}</span>`;
+    }
+    e.target.value = "";
+  });
 }
 
 /* ============================= INIT ============================= */
