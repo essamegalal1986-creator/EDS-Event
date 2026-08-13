@@ -7,7 +7,7 @@
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
   html, body { margin: 0; padding: 0; background: #F5F6F4; font-family: Inter, Arial, sans-serif; }
@@ -19,6 +19,20 @@
 <div id="root"><div id="boot-status">Loading…</div></div>
 
 <script>
+  // If ANYTHING fails before the app takes over (a CDN blocked, a typo, no
+  // internet), show the real error on screen instead of leaving people
+  // staring at "Loading…" forever with no way to tell what's wrong.
+  window.addEventListener('error', function (e) {
+    var el = document.getElementById('boot-status');
+    if (el) {
+      el.innerHTML = '<div style="max-width:480px;margin:0 auto;text-align:left;background:#FBE7E5;border:1px solid #F3B7B2;border-radius:10px;padding:16px 18px;">' +
+        '<strong style="color:#B4231D;">Something failed to load.</strong>' +
+        '<div style="margin-top:8px;font-size:13px;color:#7C1712;word-break:break-word;">' + (e.message || e) + '</div>' +
+        '<div style="margin-top:8px;font-size:12px;color:#8A8D86;">Send this exact message to get it fixed.</div>' +
+        '</div>';
+    }
+  });
+
   // ---- Your Supabase project connection (from Project Settings > API) ----
   window.__SUPABASE_URL__ = "https://bypgfgjanfbmhpguriso.supabase.co";
   window.__SUPABASE_KEY__ = "sb_publishable_71uHLlVY2wUQ0_K5gVqXLw_VZGdsne0";
