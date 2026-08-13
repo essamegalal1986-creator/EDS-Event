@@ -8,15 +8,15 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#eef1ec;
+    --bg:#eef2f5;
     --surface:#ffffff;
-    --surface-2:#f4f6f2;
-    --ink:#152420;
-    --ink-soft:#4b5b54;
-    --line:#d7ddd4;
-    --primary:#0f5c52;
-    --primary-dark:#0a3f38;
-    --primary-tint:#e3ede9;
+    --surface-2:#f2f6f8;
+    --ink:#142430;
+    --ink-soft:#51606b;
+    --line:#d7dee3;
+    --primary:#167d9e;
+    --primary-dark:#0e5870;
+    --primary-tint:#e2eef2;
     --accent:#c07a2b;
     --accent-tint:#f6e8d4;
     --danger:#a83a2c;
@@ -26,7 +26,7 @@
     --ok:#3c7a4c;
     --ok-tint:#dfeee2;
     --radius:10px;
-    --shadow:0 1px 2px rgba(21,36,32,.06), 0 4px 14px rgba(21,36,32,.05);
+    --shadow:0 1px 2px rgba(20,36,48,.06), 0 4px 14px rgba(20,36,48,.05);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -43,20 +43,16 @@
   header.top{
     background:var(--primary-dark);
     color:#fff;
-    padding:22px 20px 0;
+    padding:18px 20px 0;
     margin-bottom:22px;
   }
   header.top .inner{max-width:1180px;margin:0 auto;}
-  .brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
-  .brand .mark{
-    font-family:'IBM Plex Mono',monospace;
-    font-size:11px;letter-spacing:.14em;
-    background:var(--accent);color:#2a1a05;
-    padding:3px 8px;border-radius:4px;font-weight:600;
-  }
-  .brand h1{font-size:21px;margin:0;font-weight:800;letter-spacing:-.01em;}
-  .brand .sub{color:#bcd3cd;font-size:12.5px;margin-top:2px;}
-  nav.tabs{display:flex;gap:2px;margin-top:18px;overflow-x:auto;}
+  .brand{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .brand img.brand-logo{height:40px;width:auto;background:#fff;border-radius:6px;padding:3px 6px;}
+  .brand .brand-text h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.01em;line-height:1.15;}
+  .brand .brand-text .sub{color:#bcd3cd;font-size:12px;margin-top:1px;}
+  .header-actions{display:flex;align-items:center;gap:14px;margin-left:auto;}
+  nav.tabs{display:flex;gap:2px;margin-top:16px;overflow-x:auto;}
   nav.tabs button{
     background:transparent;border:none;color:#bcd3cd;
     padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;
@@ -65,6 +61,21 @@
   }
   nav.tabs button:hover{color:#fff;}
   nav.tabs button.active{color:#fff;border-bottom-color:var(--accent);}
+
+  /* ---- Login screen ---- */
+  .login-wrap{min-height:80vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .login-card{
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:34px 32px;width:100%;max-width:360px;text-align:center;
+  }
+  .login-card img.login-logo{height:64px;width:auto;margin-bottom:14px;}
+  .login-card h2{margin:0 0 4px;font-size:18px;color:var(--primary-dark);}
+  .login-card p.login-sub{margin:0 0 22px;color:var(--ink-soft);font-size:12.5px;}
+  .login-card .field{text-align:left;}
+  .login-card .login-error{
+    background:var(--danger-tint);color:var(--danger);border-radius:7px;
+    padding:8px 10px;font-size:12.5px;margin-bottom:14px;
+  }
 
   h2.section-title{
     font-size:17px;font-weight:800;margin:0 0 4px;color:var(--primary-dark);
@@ -185,16 +196,57 @@
     body{background:#fff;}
     .invoice-doc{box-shadow:none;border:none;padding:0;}
   }
+
+  .user-switch-row{margin-top:12px;display:flex;align-items:center;gap:8px;}
+  .user-switch-row label{font-size:11px;color:#bcd3cd;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+  .user-switch-row select{
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#fff;
+    padding:5px 8px;border-radius:6px;font-size:12.5px;min-width:140px;
+  }
+  .user-switch-row select option{color:#152420;}
+
+  .order-box{
+    background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;box-shadow:var(--shadow);margin-bottom:14px;
+  }
+  .order-box .ob-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .order-box .ob-title{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--primary-dark);font-size:14px;}
+  .order-box .ob-sub{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .order-box ul.ob-items{list-style:none;margin:0 0 12px;padding:0;border-top:1px solid var(--line);}
+  .order-box ul.ob-items li{
+    display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px dashed var(--line);
+  }
+  .order-box ul.ob-items li span.qty{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--primary-dark);}
+
+  .access-denied{text-align:center;padding:60px 20px;color:var(--ink-soft);}
+
+  .chart-bars{display:flex;align-items:flex-end;gap:8px;height:140px;padding:10px 4px 0;}
+  .chart-bars .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+  .chart-bars .bar{width:100%;max-width:30px;background:var(--primary);border-radius:4px 4px 0 0;min-height:2px;}
+  .chart-bars .bar-label{font-size:9.5px;color:var(--ink-soft);margin-top:6px;white-space:nowrap;}
+  .chart-bars .bar-value{font-size:9.5px;font-family:'IBM Plex Mono',monospace;color:var(--primary-dark);margin-bottom:3px;}
+
+  .checkbox-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:8px 0 14px;}
+  .checkbox-grid label{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;}
+  .checkbox-grid input{width:auto;}
+
+  .user-card{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:14px 16px;margin-bottom:10px;}
+  .user-card .uc-head{display:flex;justify-content:space-between;align-items:center;}
+  .user-card .uc-access{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
 </style>
 </head>
 <body>
-<header class="top">
+<header class="top" id="app-header" style="display:none;">
   <div class="inner">
     <div class="brand">
-      <span class="mark">EDS</span>
-      <h1>EDS Event Console</h1>
+      <img class="brand-logo" src="" id="header-logo" alt="EDS logo">
+      <div class="brand-text">
+        <h1>EDS Event Console</h1>
+        <div class="sub">Marketplace powered by DAF — sales &middot; stock control &middot; invoicing</div>
+      </div>
+      <div class="header-actions" id="header-actions"></div>
     </div>
-    <div class="sub">Event sales &middot; stock control &middot; invoicing — mirrors the EDS Event Sales/Stock/Invoice workbook</div>
+    <div class="user-switch-row" id="user-switch-row"></div>
     <nav class="tabs" id="tabs"></nav>
   </div>
 </header>
@@ -202,34 +254,57 @@
 
 <script>
 /* ============================= DATA ============================= */
-const PRODUCTS = [{"id": "p1", "name": "ALEXADRICAINE 68MG + 17 MG - 50 AMP", "type": "Individual", "price": 850, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p2", "name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "type": "Individual", "price": 775, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p3", "name": "Orabloc 4% with Epinephrine 1:100000", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p4", "name": "Posicaine 100 Articaine HCL 4%", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p5", "name": "Octacaine 100 Lidocaine", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p6", "name": "SEPTANEST SP", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p7", "name": "ARTINIBSA 4% with Epinephrine 1:100000", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p8", "name": "ART PHARMA 4% 1:100,000", "type": "Individual", "price": 850, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p9", "name": "Westcode Low Speed Set Push Button M-L305", "type": "Individual", "price": 2850, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p10", "name": "Topmed Anaesthesia Pen", "type": "Individual", "price": 9350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p11", "name": "Westcode Light Cure", "type": "Individual", "price": 2750, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p12", "name": "Westcode Endo Motor", "type": "Individual", "price": 8500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p13", "name": "Med Surf", "type": "Individual", "price": 275, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p14", "name": "Westcode X3 High Speed", "type": "Individual", "price": 1650, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p15", "name": "Westcode Rotary Files Silver Blue Assorted", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p16", "name": "Bony-Tite 1gm Bone Graft-Small", "type": "Individual", "price": 1800, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p17", "name": "Bony-Tite 1gm Bone Graft-Large", "type": "Individual", "price": 700, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p18", "name": "MedJet", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p19", "name": "Medforte", "type": "Individual", "price": 450, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p20", "name": "MedBreeze", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p21", "name": "MedBreeze Free", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p22", "name": "Westcode Rotary Files 17/08", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p23", "name": "Westcode Rotary Files 20/04", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p24", "name": "Westcode Rotary Files 25/04", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p25", "name": "Westcode Rotary Files 30/04", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p26", "name": "Westcode Rotary Files 25/06", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p27", "name": "Morita Dental Needles -Short", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p28", "name": "Morita Dental Needles -Long", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p29", "name": "Morita Dental Needles -Long- 38mm", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p30", "name": "Daily Practice Pack Bundle", "type": "Bundle", "price": 2990, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "ALEXADRICAINE 68MG + 17 MG - 50 AMP", "qty": 2}]}, {"id": "p31", "name": "Orabloc Bundle - Short", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p32", "name": "Orabloc Bundle - Long", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}]}, {"id": "p33", "name": "Orabloc Bundle - Long 38mm", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long- 38mm", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}]}, {"id": "p34", "name": "Posicaine Bundle - Short", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Posicaine 100 Articaine HCL 4%", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p35", "name": "Posicaine Bundle - Long", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Posicaine 100 Articaine HCL 4%", "qty": 1}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p36", "name": "Posicaine Bundle - Long 38mm", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Posicaine 100 Articaine HCL 4%", "qty": 1}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p37", "name": "IDEX Exclusive Bundle - Short", "type": "Bundle", "price": 3000, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p38", "name": "IDEX Exclusive Bundle - Long", "type": "Bundle", "price": 3000, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p39", "name": "IDEX Exclusive Bundle - Long 38mm", "type": "Bundle", "price": 3000, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p40", "name": "Best Seller Bundle - Short", "type": "Bundle", "price": 3750, "opening": 0, "maxPerCustomer": 5, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p41", "name": "Best Seller Bundle - Long", "type": "Bundle", "price": 3750, "opening": 0, "maxPerCustomer": 5, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "qty": 1}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p42", "name": "Best Seller Bundle - Long 38mm", "type": "Bundle", "price": 3750, "opening": 0, "maxPerCustomer": 5, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "qty": 1}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p43", "name": "Octacaine Value Pack", "type": "Bundle", "price": 4155, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Octacaine 100 Lidocaine", "qty": 4}]}, {"id": "p44", "name": "Rotary Bonus Bundle", "type": "Bundle", "price": 1550, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Westcode Rotary Files Silver Blue Assorted", "qty": 6}]}, {"id": "p45", "name": "Orabloc Clinic Pack - Short", "type": "Bundle", "price": 6925, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 5}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p46", "name": "Orabloc Clinic Pack - Long", "type": "Bundle", "price": 6925, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 5}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p47", "name": "Orabloc Clinic Pack - Long 38mm", "type": "Bundle", "price": 6925, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 5}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p48", "name": "Needle Saver Bundle - Short", "type": "Bundle", "price": 3500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Short", "qty": 12}]}, {"id": "p49", "name": "Needle Saver Bundle - Long", "type": "Bundle", "price": 3500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long", "qty": 12}]}, {"id": "p50", "name": "Needle Saver Bundle - Long 38mm", "type": "Bundle", "price": 3500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long- 38mm", "qty": 12}]}, {"id": "p51", "name": "Westcode Handpiece Duo", "type": "Bundle", "price": 4300, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Westcode X3 High Speed", "qty": 1}, {"name": "Westcode Low Speed Set Push Button M-L305", "qty": 1}]}, {"id": "p52", "name": "Clinic Hygiene Bundle", "type": "Bundle", "price": 1750, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Med Surf", "qty": 1}, {"name": "MedJet", "qty": 1}, {"name": "Medforte", "qty": 1}, {"name": "MedBreeze", "qty": 1}, {"name": "MedBreeze Free", "qty": 1}]}];
+const EDS_LOGO_DATA_URI = "data:image/jpeg;base64,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";
+
+const BASE_PRODUCTS = [{"id": "p1", "name": "ALEXADRICAINE 68MG + 17 MG - 50 AMP", "type": "Individual", "price": 850, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p2", "name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "type": "Individual", "price": 775, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p3", "name": "Orabloc 4% with Epinephrine 1:100000", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p4", "name": "Posicaine 100 Articaine HCL 4%", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p5", "name": "Octacaine 100 Lidocaine", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p6", "name": "SEPTANEST SP", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p7", "name": "ARTINIBSA 4% with Epinephrine 1:100000", "type": "Individual", "price": 1385, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p8", "name": "ART PHARMA 4% 1:100,000", "type": "Individual", "price": 850, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p9", "name": "Westcode Low Speed Set Push Button M-L305", "type": "Individual", "price": 2850, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p10", "name": "Topmed Anaesthesia Pen", "type": "Individual", "price": 9350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p11", "name": "Westcode Light Cure", "type": "Individual", "price": 2750, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p12", "name": "Westcode Endo Motor", "type": "Individual", "price": 8500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p13", "name": "Med Surf", "type": "Individual", "price": 275, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p14", "name": "Westcode X3 High Speed", "type": "Individual", "price": 1650, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p15", "name": "Westcode Rotary Files Silver Blue Assorted", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p16", "name": "Bony-Tite 1gm Bone Graft-Small", "type": "Individual", "price": 1800, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p17", "name": "Bony-Tite 1gm Bone Graft-Large", "type": "Individual", "price": 700, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p18", "name": "MedJet", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p19", "name": "Medforte", "type": "Individual", "price": 450, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p20", "name": "MedBreeze", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p21", "name": "MedBreeze Free", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p22", "name": "Westcode Rotary Files 17/08", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p23", "name": "Westcode Rotary Files 20/04", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p24", "name": "Westcode Rotary Files 25/04", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p25", "name": "Westcode Rotary Files 30/04", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p26", "name": "Westcode Rotary Files 25/06", "type": "Individual", "price": 310, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p27", "name": "Morita Dental Needles -Short", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p28", "name": "Morita Dental Needles -Long", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p29", "name": "Morita Dental Needles -Long- 38mm", "type": "Individual", "price": 350, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": []}, {"id": "p30", "name": "Daily Practice Pack Bundle", "type": "Bundle", "price": 2990, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "ALEXADRICAINE 68MG + 17 MG - 50 AMP", "qty": 2}]}, {"id": "p31", "name": "Orabloc Bundle - Short", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p32", "name": "Orabloc Bundle - Long", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}]}, {"id": "p33", "name": "Orabloc Bundle - Long 38mm", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long- 38mm", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}]}, {"id": "p34", "name": "Posicaine Bundle - Short", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Posicaine 100 Articaine HCL 4%", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p35", "name": "Posicaine Bundle - Long", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Posicaine 100 Articaine HCL 4%", "qty": 1}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p36", "name": "Posicaine Bundle - Long 38mm", "type": "Bundle", "price": 1599, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Posicaine 100 Articaine HCL 4%", "qty": 1}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p37", "name": "IDEX Exclusive Bundle - Short", "type": "Bundle", "price": 3000, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p38", "name": "IDEX Exclusive Bundle - Long", "type": "Bundle", "price": 3000, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p39", "name": "IDEX Exclusive Bundle - Long 38mm", "type": "Bundle", "price": 3000, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p40", "name": "Best Seller Bundle - Short", "type": "Bundle", "price": 3750, "opening": 0, "maxPerCustomer": 5, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p41", "name": "Best Seller Bundle - Long", "type": "Bundle", "price": 3750, "opening": 0, "maxPerCustomer": 5, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "qty": 1}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p42", "name": "Best Seller Bundle - Long 38mm", "type": "Bundle", "price": 3750, "opening": 0, "maxPerCustomer": 5, "active": "Yes", "components": [{"name": "ARTINIBSA 4% with Epinephrine 1:100000", "qty": 1}, {"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 1}, {"name": "MEPECAINE CARPULES 3% 50 1.80 ML RED", "qty": 1}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p43", "name": "Octacaine Value Pack", "type": "Bundle", "price": 4155, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Octacaine 100 Lidocaine", "qty": 4}]}, {"id": "p44", "name": "Rotary Bonus Bundle", "type": "Bundle", "price": 1550, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Westcode Rotary Files Silver Blue Assorted", "qty": 6}]}, {"id": "p45", "name": "Orabloc Clinic Pack - Short", "type": "Bundle", "price": 6925, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 5}, {"name": "Morita Dental Needles -Short", "qty": 1}]}, {"id": "p46", "name": "Orabloc Clinic Pack - Long", "type": "Bundle", "price": 6925, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 5}, {"name": "Morita Dental Needles -Long", "qty": 1}]}, {"id": "p47", "name": "Orabloc Clinic Pack - Long 38mm", "type": "Bundle", "price": 6925, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Orabloc 4% with Epinephrine 1:100000", "qty": 5}, {"name": "Morita Dental Needles -Long- 38mm", "qty": 1}]}, {"id": "p48", "name": "Needle Saver Bundle - Short", "type": "Bundle", "price": 3500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Short", "qty": 12}]}, {"id": "p49", "name": "Needle Saver Bundle - Long", "type": "Bundle", "price": 3500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long", "qty": 12}]}, {"id": "p50", "name": "Needle Saver Bundle - Long 38mm", "type": "Bundle", "price": 3500, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Morita Dental Needles -Long- 38mm", "qty": 12}]}, {"id": "p51", "name": "Westcode Handpiece Duo", "type": "Bundle", "price": 4300, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Westcode X3 High Speed", "qty": 1}, {"name": "Westcode Low Speed Set Push Button M-L305", "qty": 1}]}, {"id": "p52", "name": "Clinic Hygiene Bundle", "type": "Bundle", "price": 1750, "opening": 0, "maxPerCustomer": null, "active": "Yes", "components": [{"name": "Med Surf", "qty": 1}, {"name": "MedJet", "qty": 1}, {"name": "Medforte", "qty": 1}, {"name": "MedBreeze", "qty": 1}, {"name": "MedBreeze Free", "qty": 1}]}];
 
 const PAYMENT_METHODS = ["Cash","Card","Bank Transfer","Other"];
 const DELIVERY_STATUSES = ["Pending","Delivered"];
 
-const productByName = {};
-PRODUCTS.forEach(p => productByName[p.name] = p);
+let PRODUCTS = BASE_PRODUCTS;
+let productByName = {};
+let componentUsage = {};
 
-// reverse map: individual product name -> [{bundleName, qty}]
-const componentUsage = {};
-PRODUCTS.filter(p => p.type === "Bundle").forEach(b => {
-  b.components.forEach(c => {
-    if(!componentUsage[c.name]) componentUsage[c.name] = [];
-    componentUsage[c.name].push({ bundle: b.name, qty: c.qty });
+function rebuildIndexes(){
+  PRODUCTS = STATE.products;
+  productByName = {};
+  PRODUCTS.forEach(p => productByName[p.name] = p);
+  // reverse map: individual product name -> [{bundleName, qty}]
+  componentUsage = {};
+  PRODUCTS.filter(p => p.type === "Bundle").forEach(b => {
+    b.components.forEach(c => {
+      if(!componentUsage[c.name]) componentUsage[c.name] = [];
+      componentUsage[c.name].push({ bundle: b.name, qty: c.qty });
+    });
   });
-});
+}
+
+function nextProductId(){
+  let max = 0;
+  PRODUCTS.forEach(p=>{
+    const m = /^p(\d+)$/.exec(p.id||"");
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  });
+  return "p" + (max+1);
+}
 
 /* ============================= STATE ============================= */
 let STATE = {
-  sales: [],       // {id, invoiceNo, date, customer, userId, salesperson, paymentStatus, paymentMethod, notes, productName, qty, unitPrice, discountPct}
+  sales: [],       // {id, invoiceNo, date, customer, userId, paymentStatus, paymentMethod, notes, productName, qty, unitPrice, discountPct}
   restock: {},      // productName -> number
   reorder: {},      // productName -> number
-  delivery: {},     // deliveryItemKey -> "Pending" | "Delivered"  (keyed per actual product, bundles exploded into components)
+  delivery: {},     // invoiceNo -> "Pending" | "Delivered"  (confirmed per order, not per product line)
+  products: [],     // full catalog (seeded from BASE_PRODUCTS, plus anything added via Products tab)
+  users: [],        // {id, name, password, access:[tabId,...]}
+  currentUserId: "", // which user's view is active
 };
 let loaded = false;
 let activeTab = "dashboard";
+let authedUserId = null; // reset on every page load — login is required each visit
 
 const STORAGE_KEY = "eds_console_state_v1";
+const ADMIN_ID = "admin";
+const DEFAULT_ADMIN_PASSWORD = "admin123";
 
 async function loadState(){
   try{
@@ -239,7 +314,25 @@ async function loadState(){
       STATE = Object.assign(STATE, parsed);
     }
   }catch(e){ /* no saved state yet */ }
+  if(!Array.isArray(STATE.products) || STATE.products.length === 0){
+    STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
+  }
+  if(!Array.isArray(STATE.users) || STATE.users.length === 0){
+    STATE.users = [{ id: ADMIN_ID, name: "Admin", password: DEFAULT_ADMIN_PASSWORD, access: TABS.map(t=>t.id) }];
+  }
+  if(!STATE.currentUserId || !STATE.users.find(u=>u.id===STATE.currentUserId)){
+    STATE.currentUserId = STATE.users[0].id;
+  }
+  rebuildIndexes();
   loaded = true;
+}
+
+function currentUser(){
+  return STATE.users.find(u=>u.id===STATE.currentUserId) || STATE.users[0] || {id:ADMIN_ID,name:"Admin",access:TABS.map(t=>t.id)};
+}
+function hasAccess(tabId){
+  const u = currentUser();
+  return u.id===ADMIN_ID || (u.access||[]).includes(tabId);
 }
 async function saveState(){
   try{
@@ -323,51 +416,135 @@ const TABS = [
   {id:"saleslog", label:"Sales Log"},
   {id:"invoices", label:"Invoices"},
   {id:"stock", label:"Stock Control"},
+  {id:"users", label:"Users"},
 ];
 
-/* ---- Delivery items: every sale line exploded down to real, deliverable
-   products. A bundle line becomes one delivery item per component, named
-   after the component product — never the bundle name. Status is tracked
-   per delivery item (not per sale line), keyed by saleId (+ component index
-   for bundle lines) so it survives independently of payment status. ---- */
-function deliveryItems(){
-  const items = [];
-  STATE.sales.forEach(s=>{
-    const p = productByName[s.productName];
-    if(!p) return;
-    if(p.type === "Individual"){
-      const key = s.id;
-      items.push({
-        key, invoiceNo:s.invoiceNo, customer:s.customer, date:s.date,
-        productName:s.productName, qty:Number(s.qty), fromBundle:null,
-        status: STATE.delivery[key] || "Pending"
+/* ---- Explode one order line down to real, deliverable products. A bundle
+   line becomes one item per component, named after the component product —
+   never the bundle name. Components with qty 0 contribute nothing. ---- */
+function explodeLine(line){
+  const p = productByName[line.productName];
+  if(!p) return [];
+  if(p.type === "Individual") return [{ name: line.productName, qty: Number(line.qty)||0 }];
+  return p.components
+    .map(c => ({ name: c.name, qty: (Number(c.qty)||0) * (Number(line.qty)||0) }))
+    .filter(c => c.qty > 0);
+}
+
+/* ---- Orders ready for delivery: only orders that are fully PAID, each
+   collapsed into ONE box with a consolidated product+quantity list.
+   Delivery is confirmed for the whole order at once, not per product. ---- */
+function paidOrders(){
+  const map = invoiceList();
+  const orders = [];
+  map.forEach((rows, no)=>{
+    const allPaid = rows.every(r=>r.paymentStatus==="Paid");
+    if(!allPaid) return;
+    const itemMap = new Map();
+    rows.forEach(line=>{
+      explodeLine(line).forEach(it=>{
+        itemMap.set(it.name, (itemMap.get(it.name)||0) + it.qty);
       });
-    } else {
-      p.components.forEach((c, idx)=>{
-        const key = s.id + ":" + idx;
-        items.push({
-          key, invoiceNo:s.invoiceNo, customer:s.customer, date:s.date,
-          productName:c.name, qty:c.qty*Number(s.qty), fromBundle:s.productName,
-          status: STATE.delivery[key] || "Pending"
-        });
-      });
-    }
+    });
+    const items = [...itemMap.entries()].map(([name,qty])=>({name,qty}));
+    const h = rows[0];
+    const {grand} = invoiceSummary(rows);
+    orders.push({
+      invoiceNo: no, customer: h.customer, date: h.date, items, grand,
+      status: STATE.delivery[no] || "Pending"
+    });
   });
-  return items;
+  return orders;
 }
 
 function renderTabs(){
   const nav = document.getElementById("tabs");
-  nav.innerHTML = TABS.map(t=>`<button data-tab="${t.id}" class="${activeTab===t.id?'active':''}">${t.label}</button>`).join("");
+  const visible = TABS.filter(t=>hasAccess(t.id));
+  nav.innerHTML = visible.map(t=>`<button data-tab="${t.id}" class="${activeTab===t.id?'active':''}">${t.label}</button>`).join("");
   nav.querySelectorAll("button").forEach(b=>{
     b.addEventListener("click", ()=>{ activeTab=b.dataset.tab; render(); });
   });
+
+  const switchRow = document.getElementById("user-switch-row");
+  // Only the real Admin login can preview other users' views — everyone else is locked to their own.
+  if(authedUserId === ADMIN_ID){
+    switchRow.innerHTML = `
+      <label for="user-switch-select">Viewing as</label>
+      <select id="user-switch-select">
+        ${STATE.users.map(u=>`<option value="${escapeHtml(u.id)}" ${u.id===STATE.currentUserId?"selected":""}>${escapeHtml(u.name)}</option>`).join("")}
+      </select>
+    `;
+    document.getElementById("user-switch-select").addEventListener("change", async e=>{
+      STATE.currentUserId = e.target.value;
+      if(!hasAccess(activeTab)){
+        const first = TABS.find(t=>hasAccess(t.id));
+        activeTab = first ? first.id : "dashboard";
+      }
+      await saveState();
+      render();
+    });
+  } else {
+    switchRow.innerHTML = "";
+  }
+
+  const actions = document.getElementById("header-actions");
+  actions.innerHTML = `<span style="font-size:12px;color:#bcd3cd;">${escapeHtml(currentUser().name)}</span><button class="btn ghost sm" id="logout-btn" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);color:#fff;">Log out</button>`;
+  document.getElementById("logout-btn").addEventListener("click", ()=>{
+    authedUserId = null;
+    render();
+  });
+}
+
+function renderLogin(app){
+  document.getElementById("app-header").style.display = "none";
+  app.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-card">
+        <img class="login-logo" src="${EDS_LOGO_DATA_URI}" alt="EDS logo">
+        <h2>EDS Event Console</h2>
+        <p class="login-sub">Sign in to continue.</p>
+        <div id="login-error"></div>
+        <div class="field"><label class="field-label">Name</label><input id="login-name" placeholder="Your name" autocomplete="username"></div>
+        <div class="field"><label class="field-label">Password</label><input id="login-password" type="password" placeholder="Password" autocomplete="current-password"></div>
+        <button class="btn primary" id="login-btn" style="width:100%;margin-top:6px;">Log in</button>
+      </div>
+    </div>
+  `;
+  const nameInput = document.getElementById("login-name");
+  const passInput = document.getElementById("login-password");
+  const errBox = document.getElementById("login-error");
+  function attempt(){
+    const name = nameInput.value.trim().toLowerCase();
+    const pass = passInput.value;
+    const match = STATE.users.find(u=> u.name.trim().toLowerCase()===name && (u.password||"")===pass);
+    if(!match){
+      errBox.innerHTML = `<div class="login-error">Name or password is incorrect.</div>`;
+      return;
+    }
+    authedUserId = match.id;
+    STATE.currentUserId = match.id;
+    activeTab = TABS.find(t=>hasAccess(t.id)) ? (hasAccess("dashboard")?"dashboard":TABS.find(t=>hasAccess(t.id)).id) : "dashboard";
+    document.getElementById("app-header").style.display = "block";
+    saveState();
+    render();
+  }
+  document.getElementById("login-btn").addEventListener("click", attempt);
+  passInput.addEventListener("keydown", e=>{ if(e.key==="Enter") attempt(); });
+  nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") passInput.focus(); });
 }
 
 function render(){
-  renderTabs();
   const app = document.getElementById("app");
-  if(!loaded){ app.innerHTML = `<div class="empty-state">Loading console…</div>`; return; }
+  if(!loaded){ document.getElementById("app-header").style.display="none"; app.innerHTML = `<div class="empty-state">Loading console…</div>`; return; }
+  if(!authedUserId){ renderLogin(app); return; }
+
+  document.getElementById("app-header").style.display = "block";
+  document.getElementById("header-logo").src = EDS_LOGO_DATA_URI;
+  renderTabs();
+  if(!hasAccess(activeTab)){
+    app.innerHTML = `<div class="access-denied"><div class="glyph" style="font-size:26px;">🔒</div><p>${escapeHtml(currentUser().name)} doesn't have access to this section.</p></div>`;
+    return;
+  }
   if(activeTab==="dashboard") return renderDashboard(app);
   if(activeTab==="products") return renderProducts(app);
   if(activeTab==="orders") return renderNewSale(app);
@@ -376,23 +553,58 @@ function render(){
   if(activeTab==="saleslog") return renderSalesLog(app);
   if(activeTab==="invoices") return renderInvoices(app);
   if(activeTab==="stock") return renderStock(app);
+  if(activeTab==="users") return renderUsers(app);
 }
 
 /* ============================= DASHBOARD ============================= */
 function renderDashboard(app){
   const invMap = invoiceList();
   const totalInvoices = invMap.size;
-  let revenue = 0, outstanding = 0;
+  let revenue = 0, outstanding = 0, paidInvoiceCount = 0;
+  const methodTotals = {};
   invMap.forEach(rows=>{
     const {grand} = invoiceSummary(rows);
     const allPaid = rows.every(r=>r.paymentStatus==="Paid");
-    if(allPaid) revenue += grand; else outstanding += grand;
+    if(allPaid){
+      revenue += grand; paidInvoiceCount++;
+      const method = rows[0].paymentMethod || "Unspecified";
+      methodTotals[method] = (methodTotals[method]||0) + grand;
+    } else {
+      outstanding += grand;
+    }
   });
+  const avgOrderValue = paidInvoiceCount ? revenue/paidInvoiceCount : 0;
+
   const stock = stockRows();
   const outCount = stock.filter(s=>s.status==="OUT OF STOCK").length;
   const lowCount = stock.filter(s=>s.status==="LOW STOCK").length;
-  const delItems = deliveryItems();
-  const delPending = delItems.filter(d=>d.status==="Pending").length;
+
+  const orders = paidOrders();
+  const ordersPending = orders.filter(o=>o.status==="Pending").length;
+  const ordersDelivered = orders.filter(o=>o.status==="Delivered").length;
+  const deliveryRate = orders.length ? Math.round(100*ordersDelivered/orders.length) : 0;
+
+  // top products by revenue among Paid sales lines
+  const productAgg = {};
+  STATE.sales.filter(s=>s.paymentStatus==="Paid").forEach(s=>{
+    const {lineTotal} = lineCalc(s.qty, s.unitPrice, s.discountPct);
+    if(!productAgg[s.productName]) productAgg[s.productName] = {qty:0, revenue:0};
+    productAgg[s.productName].qty += Number(s.qty);
+    productAgg[s.productName].revenue += lineTotal;
+  });
+  const topProducts = Object.entries(productAgg).sort((a,b)=>b[1].revenue-a[1].revenue).slice(0,5);
+
+  // revenue trend: last 10 distinct order dates (paid invoices), chronological
+  const dateTotals = {};
+  invMap.forEach(rows=>{
+    const allPaid = rows.every(r=>r.paymentStatus==="Paid");
+    if(!allPaid) return;
+    const {grand} = invoiceSummary(rows);
+    const d = rows[0].date || "—";
+    dateTotals[d] = (dateTotals[d]||0) + grand;
+  });
+  const trend = Object.entries(dateTotals).sort((a,b)=> a[0]<b[0]?-1:1).slice(-10);
+  const trendMax = Math.max(1, ...trend.map(t=>t[1]));
 
   const recent = [...invMap.entries()].slice(-5).reverse();
 
@@ -402,14 +614,61 @@ function renderDashboard(app){
       <p class="section-desc">Live totals computed from every order recorded in the Sales Log.</p>
       <div class="grid cols-4">
         <div class="card stat"><div class="label">Invoices</div><div class="value">${totalInvoices}</div><div class="note">unique invoice numbers</div></div>
-        <div class="card stat"><div class="label">Revenue (Paid)</div><div class="value">${fmtEGP(revenue)}</div><div class="note">fully paid invoices</div></div>
+        <div class="card stat"><div class="label">Revenue (Paid)</div><div class="value">${fmtEGP(revenue)}</div><div class="note">${paidInvoiceCount} fully paid invoices</div></div>
         <div class="card stat"><div class="label">Outstanding</div><div class="value warn">${fmtEGP(outstanding)}</div><div class="note">unpaid / partially unpaid</div></div>
-        <div class="card stat"><div class="label">Deliveries Pending</div><div class="value ${delPending>0?'warn':''}">${delPending}</div><div class="note">of ${delItems.length} product units</div></div>
+        <div class="card stat"><div class="label">Avg Order Value</div><div class="value">${fmtEGP(avgOrderValue)}</div><div class="note">per paid invoice</div></div>
       </div>
       <div class="grid cols-4" style="margin-top:14px;">
+        <div class="card stat"><div class="label">Orders Awaiting Delivery</div><div class="value ${ordersPending>0?'warn':''}">${ordersPending}</div><div class="note">paid, not yet delivered</div></div>
+        <div class="card stat"><div class="label">Delivery Completion</div><div class="value">${deliveryRate}%</div><div class="note">${ordersDelivered} of ${orders.length} paid orders</div></div>
         <div class="card stat"><div class="label">Stock Alerts</div><div class="value ${outCount>0?'danger':(lowCount>0?'warn':'')}">${outCount+lowCount}</div><div class="note">${outCount} out · ${lowCount} low</div></div>
+        <div class="card stat"><div class="label">Top Product</div><div class="value" style="font-size:15px;line-height:1.3;">${topProducts.length?escapeHtml(topProducts[0][0]):"—"}</div><div class="note">${topProducts.length?fmtEGP(topProducts[0][1].revenue)+" revenue":"no paid sales yet"}</div></div>
       </div>
     </section>
+
+    <section class="grid cols-2" style="margin-bottom:26px;align-items:start;">
+      <div class="card">
+        <h3 style="margin:0 0 4px;font-size:13.5px;">Revenue trend</h3>
+        <p style="margin:0 0 4px;color:var(--ink-soft);font-size:12px;">Paid invoices by date (last ${trend.length || 0} active days).</p>
+        ${trend.length ? `
+          <div class="chart-bars">
+            ${trend.map(([d,v])=>`
+              <div class="bar-col">
+                <div class="bar-value">${Math.round(v)>=1000?Math.round(v/1000)+"k":Math.round(v)}</div>
+                <div class="bar" style="height:${Math.max(4, Math.round(100*v/trendMax))}%;"></div>
+                <div class="bar-label">${escapeHtml(d.slice(5))}</div>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<div class="empty-state"><div class="glyph">📈</div>No paid orders yet.</div>`}
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:13.5px;">Payment method mix</h3>
+        ${Object.keys(methodTotals).length ? `
+          <table><tbody>
+            ${Object.entries(methodTotals).sort((a,b)=>b[1]-a[1]).map(([m,v])=>`
+              <tr><td>${escapeHtml(m)}</td><td class="num mono">${fmtEGP(v)}</td></tr>
+            `).join("")}
+          </tbody></table>
+        ` : `<div class="empty-state"><div class="glyph">💳</div>No paid orders yet.</div>`}
+      </div>
+    </section>
+
+    <section style="margin-bottom:26px;">
+      <h2 class="section-title">Top products</h2>
+      <p class="section-desc">Best performers by revenue among paid orders.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Product</th><th class="num">Units Sold</th><th class="num">Revenue</th></tr></thead>
+          <tbody>
+          ${topProducts.length ? topProducts.map(([name,agg],i)=>`
+            <tr><td class="mono">${i+1}</td><td>${escapeHtml(name)}</td><td class="num mono">${agg.qty}</td><td class="num mono">${fmtEGP(agg.revenue)}</td></tr>
+          `).join("") : `<tr><td colspan="4"><div class="empty-state"><div class="glyph">📦</div>No paid orders yet.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section>
       <h2 class="section-title">Recent invoices</h2>
       <p class="section-desc">Most recently created invoices.</p>
@@ -421,7 +680,7 @@ function renderDashboard(app){
             const {grand} = invoiceSummary(rows);
             const paid = rows.every(r=>r.paymentStatus==="Paid");
             return `<tr><td class="mono">${escapeHtml(no)}</td><td>${escapeHtml(rows[0].customer)}</td><td class="mono">${escapeHtml(rows[0].date)}</td><td><span class="badge ${paid?'ok':'warn'}">${paid?'Paid':'Unpaid'}</span></td><td class="num">${fmtEGP(grand)}</td></tr>`;
-          }).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">🧾</div>No invoices yet — create one in New Sale.</div></td></tr>`}
+          }).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">🧾</div>No invoices yet — create one in Orders.</div></td></tr>`}
           </tbody>
         </table>
       </div>
@@ -430,31 +689,167 @@ function renderDashboard(app){
 }
 
 /* ============================= PRODUCTS ============================= */
+let newProductForm = null;
+let newBundleForm = null;
+function freshProductForm(){ return { name:"", price:"", opening:0, maxPerCustomer:"" }; }
+function freshBundleComponentRow(){ return { rowId:uid(), productName:"", qty:0 }; }
+function freshBundleForm(){ return { name:"", price:"", maxPerCustomer:"", components:[freshBundleComponentRow()] }; }
+
 function renderProducts(app){
+  if(!newProductForm) newProductForm = freshProductForm();
+  if(!newBundleForm) newBundleForm = freshBundleForm();
   const individuals = PRODUCTS.filter(p=>p.type==="Individual");
   const bundles = PRODUCTS.filter(p=>p.type==="Bundle");
+
   app.innerHTML = `
     <section style="margin-bottom:26px;">
       <h2 class="section-title">Product catalog</h2>
       <p class="section-desc">${individuals.length} individual products · ${bundles.length} bundles. Prices in EGP.</p>
+
+      <div class="grid cols-2" style="margin-bottom:24px;align-items:start;">
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:13.5px;">Add product</h3>
+          <div class="field"><label class="field-label">Name</label><input id="np-name" placeholder="Product name" value="${escapeHtml(newProductForm.name)}"></div>
+          <div class="grid cols-2">
+            <div class="field"><label class="field-label">Price (EGP)</label><input id="np-price" type="number" min="0" step="1" value="${escapeHtml(newProductForm.price)}"></div>
+            <div class="field"><label class="field-label">Opening stock</label><input id="np-opening" type="number" min="0" step="1" value="${escapeHtml(newProductForm.opening)}"></div>
+          </div>
+          <div class="field"><label class="field-label">Max / customer (optional)</label><input id="np-max" type="number" min="0" step="1" placeholder="No limit" value="${escapeHtml(newProductForm.maxPerCustomer)}"></div>
+          <button class="btn primary" id="np-save">Add product</button>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0 0 4px;font-size:13.5px;">Add bundle</h3>
+          <p style="margin:0 0 12px;color:var(--ink-soft);font-size:12px;">Add each component and how many go in one bundle. A component qty can be <strong>0</strong> if you just want it listed without it drawing from stock.</p>
+          <div class="field"><label class="field-label">Bundle name</label><input id="nb-name" placeholder="Bundle name" value="${escapeHtml(newBundleForm.name)}"></div>
+          <div class="grid cols-2">
+            <div class="field"><label class="field-label">Price (EGP)</label><input id="nb-price" type="number" min="0" step="1" value="${escapeHtml(newBundleForm.price)}"></div>
+            <div class="field"><label class="field-label">Max / customer (optional)</label><input id="nb-max" type="number" min="0" step="1" placeholder="No limit" value="${escapeHtml(newBundleForm.maxPerCustomer)}"></div>
+          </div>
+          <label class="field-label">Components</label>
+          <div id="nb-components"></div>
+          <button class="btn ghost sm" id="nb-add-component" style="margin:6px 0 14px;">+ Add component</button>
+          <div><button class="btn primary" id="nb-save">Add bundle</button></div>
+        </div>
+      </div>
+
       <h3 style="font-size:13px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 10px;">Individual products</h3>
       <div class="grid cols-3" id="ind-grid"></div>
       <h3 style="font-size:13px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin:24px 0 10px;">Bundles</h3>
       <div class="grid cols-3" id="bun-grid"></div>
     </section>
   `;
+
   document.getElementById("ind-grid").innerHTML = individuals.map(p=>`
     <div class="catalog-card">
-      <h4>${escapeHtml(p.name)}</h4>
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <h4>${escapeHtml(p.name)}</h4>
+        <button class="remove-x" data-del-product="${escapeHtml(p.id)}" title="Remove" style="width:24px;height:24px;font-size:13px;flex:none;">&times;</button>
+      </div>
       <div class="price">${fmtEGP(p.price)}</div>
       <div class="comp mono">${escapeHtml(p.id)}${p.maxPerCustomer?` · max ${p.maxPerCustomer}/customer`:""}</div>
     </div>`).join("");
   document.getElementById("bun-grid").innerHTML = bundles.map(p=>`
     <div class="catalog-card">
-      <h4>${escapeHtml(p.name)} <span class="badge accent" style="margin-left:4px;">bundle</span></h4>
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <h4>${escapeHtml(p.name)} <span class="badge accent" style="margin-left:4px;">bundle</span></h4>
+        <button class="remove-x" data-del-product="${escapeHtml(p.id)}" title="Remove" style="width:24px;height:24px;font-size:13px;flex:none;">&times;</button>
+      </div>
       <div class="price">${fmtEGP(p.price)}</div>
-      <div class="comp">${p.components.map(c=>`${c.qty}&times; ${escapeHtml(c.name)}`).join("<br>")}</div>
+      <div class="comp">${p.components.map(c=>`${c.qty}&times; ${escapeHtml(c.name)}${c.qty===0?' <span class="badge muted" style="padding:1px 6px;">0 qty</span>':''}`).join("<br>")}</div>
     </div>`).join("");
+
+  wireProductForms(app);
+}
+
+function wireProductForms(app){
+  // --- Add product ---
+  const bindNP = (id,key,isNum)=>document.getElementById(id).addEventListener("input", e=>{
+    newProductForm[key] = e.target.value;
+  });
+  bindNP("np-name","name"); bindNP("np-price","price"); bindNP("np-opening","opening"); bindNP("np-max","maxPerCustomer");
+  document.getElementById("np-save").addEventListener("click", async ()=>{
+    const name = newProductForm.name.trim();
+    const price = Number(newProductForm.price);
+    if(!name){ alert("Give the product a name."); return; }
+    if(isNaN(price) || price < 0){ alert("Enter a valid price (0 or more)."); return; }
+    if(productByName[name]){ alert("A product with that name already exists."); return; }
+    STATE.products.push({
+      id: nextProductId(), name, type:"Individual", price,
+      opening: Number(newProductForm.opening)||0,
+      maxPerCustomer: newProductForm.maxPerCustomer!=="" ? Number(newProductForm.maxPerCustomer) : null,
+      active:"Yes", components:[]
+    });
+    rebuildIndexes();
+    await saveState();
+    newProductForm = freshProductForm();
+    renderProducts(app);
+  });
+
+  // --- Add bundle ---
+  const bindNB = (id,key)=>document.getElementById(id).addEventListener("input", e=>{ newBundleForm[key]=e.target.value; });
+  bindNB("nb-name","name"); bindNB("nb-price","price"); bindNB("nb-max","maxPerCustomer");
+
+  const compWrap = document.getElementById("nb-components");
+  const individualOptions = (selected)=> PRODUCTS.filter(p=>p.type==="Individual").map(p=>
+    `<option value="${escapeHtml(p.name)}" ${p.name===selected?"selected":""}>${escapeHtml(p.name)}</option>`
+  ).join("");
+  compWrap.innerHTML = newBundleForm.components.map(c=>`
+    <div class="lineitem-row" style="grid-template-columns:2.4fr .9fr 32px;" data-comp="${c.rowId}">
+      <select class="nb-comp-product"><option value="">Select product…</option>${individualOptions(c.productName)}</select>
+      <input type="number" min="0" step="1" class="nb-comp-qty" value="${c.qty}" title="Quantity per bundle — can be 0">
+      <button class="remove-x" data-remove-comp="${c.rowId}" title="Remove component">&times;</button>
+    </div>
+  `).join("");
+  compWrap.querySelectorAll("[data-comp]").forEach(row=>{
+    const rowId = row.dataset.comp;
+    const c = newBundleForm.components.find(x=>x.rowId===rowId);
+    row.querySelector(".nb-comp-product").addEventListener("change", e=>{ c.productName=e.target.value; });
+    row.querySelector(".nb-comp-qty").addEventListener("input", e=>{ c.qty=e.target.value; });
+    const rm = row.querySelector("[data-remove-comp]");
+    rm.addEventListener("click", ()=>{
+      newBundleForm.components = newBundleForm.components.filter(x=>x.rowId!==rowId);
+      if(newBundleForm.components.length===0) newBundleForm.components.push(freshBundleComponentRow());
+      renderProducts(app);
+    });
+  });
+  document.getElementById("nb-add-component").addEventListener("click", ()=>{
+    newBundleForm.components.push(freshBundleComponentRow());
+    renderProducts(app);
+  });
+
+  document.getElementById("nb-save").addEventListener("click", async ()=>{
+    const name = newBundleForm.name.trim();
+    const price = Number(newBundleForm.price);
+    const comps = newBundleForm.components
+      .filter(c=>c.productName)
+      .map(c=>({ name:c.productName, qty: Number(c.qty)||0 })); // 0 is a valid, intentional quantity
+    if(!name){ alert("Give the bundle a name."); return; }
+    if(isNaN(price) || price < 0){ alert("Enter a valid price (0 or more)."); return; }
+    if(productByName[name]){ alert("A product with that name already exists."); return; }
+    if(comps.length===0){ alert("Add at least one component (its quantity can be 0)."); return; }
+    STATE.products.push({
+      id: nextProductId(), name, type:"Bundle", price, opening:0,
+      maxPerCustomer: newBundleForm.maxPerCustomer!=="" ? Number(newBundleForm.maxPerCustomer) : null,
+      active:"Yes", components: comps
+    });
+    rebuildIndexes();
+    await saveState();
+    newBundleForm = freshBundleForm();
+    renderProducts(app);
+  });
+
+  // --- Delete product/bundle ---
+  app.querySelectorAll("[data-del-product]").forEach(b=>b.addEventListener("click", async ()=>{
+    const id = b.dataset.delProduct;
+    const p = STATE.products.find(x=>x.id===id);
+    if(!p) return;
+    if(!confirm(`Remove "${p.name}" from the catalog? This won't change past orders, but it will disappear from new-order and bundle-builder pickers.`)) return;
+    STATE.products = STATE.products.filter(x=>x.id!==id);
+    rebuildIndexes();
+    await saveState();
+    renderProducts(app);
+  }));
 }
 
 /* ============================= NEW SALE ============================= */
@@ -466,7 +861,6 @@ function freshNewSale(){
     date: todayISO(),
     customer: "",
     userId: "",
-    salesperson: "",
     notes: "",
     lines: [freshLine()]
   };
@@ -501,9 +895,6 @@ function renderNewSale(app){
           <div class="field"><label class="field-label">Date</label><input id="f-date" type="date" value="${escapeHtml(f.date)}"></div>
           <div class="field"><label class="field-label">Customer</label><input id="f-customer" placeholder="Customer name" value="${escapeHtml(f.customer)}"></div>
           <div class="field"><label class="field-label">User ID</label><input id="f-userId" placeholder="e.g. u-104" value="${escapeHtml(f.userId)}"></div>
-        </div>
-        <div class="grid cols-4">
-          <div class="field"><label class="field-label">Salesperson</label><input id="f-salesperson" placeholder="Rep name" value="${escapeHtml(f.salesperson)}"></div>
         </div>
         <div class="field"><label class="field-label">Notes</label><textarea id="f-notes" rows="2" placeholder="Optional notes">${escapeHtml(f.notes)}</textarea></div>
       </div>
@@ -554,7 +945,7 @@ function renderNewSale(app){
   // field bindings
   const bind = (id,key)=>document.getElementById(id).addEventListener("input", e=>{ f[key]=e.target.value; });
   bind("f-invoiceNo","invoiceNo"); bind("f-date","date"); bind("f-customer","customer");
-  bind("f-userId","userId"); bind("f-salesperson","salesperson"); bind("f-notes","notes");
+  bind("f-userId","userId"); bind("f-notes","notes");
 
   document.getElementById("add-line").addEventListener("click", ()=>{ f.lines.push(freshLine()); render(); });
 
@@ -588,7 +979,6 @@ function renderNewSale(app){
         date: f.date || todayISO(),
         customer: f.customer,
         userId: f.userId,
-        salesperson: f.salesperson,
         paymentStatus: "Unpaid",
         paymentMethod: "",
         notes: f.notes,
@@ -607,7 +997,7 @@ function renderNewSale(app){
 }
 
 /* ============================= PAYMENTS ============================= */
-let paymentFilter = { status:"All", q:"" };
+let paymentFilter = { q:"" };
 function renderPayments(app){
   const map = invoiceList();
   let invoices = [...map.entries()].map(([no, rows])=>{
@@ -616,30 +1006,25 @@ function renderPayments(app){
     // an invoice counts as Paid only once every line on it is Paid
     const status = rows.every(r=>r.paymentStatus==="Paid") ? "Paid" : "Unpaid";
     return {no, rows, grand, status, customer:h.customer, date:h.date, method: rows.every(r=>r.paymentMethod===rows[0].paymentMethod) ? (rows[0].paymentMethod||"") : "Mixed"};
-  });
-  if(paymentFilter.status!=="All") invoices = invoices.filter(i=>i.status===paymentFilter.status);
+  }).filter(i=>i.status==="Unpaid"); // Payments only ever shows work still to do
   if(paymentFilter.q){
     const q = paymentFilter.q.toLowerCase();
     invoices = invoices.filter(i=>i.no.toLowerCase().includes(q) || i.customer.toLowerCase().includes(q));
   }
   invoices.sort((a,b)=> a.no < b.no ? 1 : -1);
 
-  const totalOutstanding = invoices.filter(i=>i.status==="Unpaid").reduce((a,i)=>a+i.grand,0);
+  const totalOutstanding = invoices.reduce((a,i)=>a+i.grand,0);
 
   app.innerHTML = `
     <section>
       <h2 class="section-title">Payments</h2>
-      <p class="section-desc">Mark an invoice Paid and record how it was paid — separate from creating the order or fulfilling delivery.</p>
-      <div class="grid cols-3" style="margin-bottom:18px;">
-        <div class="card stat"><div class="label">Invoices</div><div class="value">${invoices.length}</div></div>
+      <p class="section-desc">Unpaid orders only — mark one Paid and it moves off this list and into Delivery automatically.</p>
+      <div class="grid cols-2" style="margin-bottom:18px;">
+        <div class="card stat"><div class="label">Unpaid Invoices</div><div class="value danger">${invoices.length}</div></div>
         <div class="card stat"><div class="label">Outstanding</div><div class="value warn">${fmtEGP(totalOutstanding)}</div></div>
-        <div class="card stat"><div class="label">Unpaid Invoices</div><div class="value danger">${invoices.filter(i=>i.status==="Unpaid").length}</div></div>
       </div>
       <div class="toolbar">
         <div class="field"><label class="field-label">Search</label><input id="pay-search" placeholder="Invoice or customer…" value="${escapeHtml(paymentFilter.q)}"></div>
-        <div class="field"><label class="field-label">Status</label>
-          <select id="pay-status">${["All","Paid","Unpaid"].map(s=>`<option ${paymentFilter.status===s?"selected":""}>${s}</option>`).join("")}</select>
-        </div>
       </div>
       <div class="table-wrap">
         <table>
@@ -662,17 +1047,15 @@ function renderPayments(app){
           ${PAYMENT_METHODS.map(m=>`<option value="${m}" ${i.method===m?"selected":""}>${m}</option>`).join("")}
         </select>
       </td>
-      <td><button class="badge ${i.status==='Paid'?'ok':'warn'}" data-toggle-invoice="${escapeHtml(i.no)}" style="border:none;cursor:pointer;">${i.status}</button></td>
+      <td><button class="badge warn" data-toggle-invoice="${escapeHtml(i.no)}" style="border:none;cursor:pointer;">Mark Paid</button></td>
     </tr>
-  `).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="glyph">💳</div>No invoices match this filter.</div></td></tr>`;
+  `).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="glyph">✅</div>Nothing unpaid right now.</div></td></tr>`;
 
   document.getElementById("pay-search").addEventListener("input", e=>{ paymentFilter.q=e.target.value; renderPayments(app); });
-  document.getElementById("pay-status").addEventListener("change", e=>{ paymentFilter.status=e.target.value; renderPayments(app); });
   body.querySelectorAll("[data-toggle-invoice]").forEach(b=>b.addEventListener("click", async ()=>{
     const no = b.dataset.toggleInvoice;
     const rows = map.get(no) || [];
-    const nowPaid = !rows.every(r=>r.paymentStatus==="Paid");
-    rows.forEach(r=> r.paymentStatus = nowPaid ? "Paid" : "Unpaid");
+    rows.forEach(r=> r.paymentStatus = "Paid");
     await saveState(); renderPayments(app);
   }));
   body.querySelectorAll("[data-method]").forEach(sel=>sel.addEventListener("change", async e=>{
@@ -684,58 +1067,61 @@ function renderPayments(app){
 }
 
 /* ============================= DELIVERY ============================= */
-let deliveryFilter = { status:"All", q:"" };
+let deliveryFilter = { status:"Pending", q:"" };
 function renderDelivery(app){
-  let items = deliveryItems();
-  if(deliveryFilter.status!=="All") items = items.filter(i=>i.status===deliveryFilter.status);
+  const allOrders = paidOrders();
+  let orders = allOrders;
+  if(deliveryFilter.status!=="All") orders = orders.filter(o=>o.status===deliveryFilter.status);
   if(deliveryFilter.q){
     const q = deliveryFilter.q.toLowerCase();
-    items = items.filter(i=> i.invoiceNo.toLowerCase().includes(q) || i.customer.toLowerCase().includes(q) || i.productName.toLowerCase().includes(q));
+    orders = orders.filter(o=> o.invoiceNo.toLowerCase().includes(q) || o.customer.toLowerCase().includes(q));
   }
-  items.sort((a,b)=> a.invoiceNo < b.invoiceNo ? 1 : -1);
+  orders.sort((a,b)=> a.invoiceNo < b.invoiceNo ? 1 : -1);
 
-  const pendingCount = deliveryItems().filter(i=>i.status==="Pending").length;
-  const deliveredCount = deliveryItems().filter(i=>i.status==="Delivered").length;
+  const pendingCount = allOrders.filter(o=>o.status==="Pending").length;
+  const deliveredCount = allOrders.filter(o=>o.status==="Delivered").length;
 
   app.innerHTML = `
     <section>
       <h2 class="section-title">Delivery</h2>
-      <p class="section-desc">One line per <strong>product actually being handed over</strong> — bundles are broken down into their real components here, never shown as the bundle name.</p>
+      <p class="section-desc">Only <strong>paid</strong> orders show up here. Each order is one box — you confirm the whole order as delivered, not each product. Bundles are still broken down into their real components inside the box, with quantities, never shown as the bundle name.</p>
       <div class="grid cols-3" style="margin-bottom:18px;">
-        <div class="card stat"><div class="label">Product units to deliver</div><div class="value">${deliveryItems().length}</div></div>
-        <div class="card stat"><div class="label">Pending</div><div class="value warn">${pendingCount}</div></div>
+        <div class="card stat"><div class="label">Paid orders</div><div class="value">${allOrders.length}</div></div>
+        <div class="card stat"><div class="label">Pending delivery</div><div class="value warn">${pendingCount}</div></div>
         <div class="card stat"><div class="label">Delivered</div><div class="value">${deliveredCount}</div></div>
       </div>
       <div class="toolbar">
-        <div class="field"><label class="field-label">Search</label><input id="del-search" placeholder="Invoice, customer, product…" value="${escapeHtml(deliveryFilter.q)}"></div>
+        <div class="field"><label class="field-label">Search</label><input id="del-search" placeholder="Invoice or customer…" value="${escapeHtml(deliveryFilter.q)}"></div>
         <div class="field"><label class="field-label">Status</label>
-          <select id="del-status">${["All","Pending","Delivered"].map(s=>`<option ${deliveryFilter.status===s?"selected":""}>${s}</option>`).join("")}</select>
+          <select id="del-status">${["Pending","Delivered","All"].map(s=>`<option ${deliveryFilter.status===s?"selected":""}>${s}</option>`).join("")}</select>
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Invoice</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th>Status</th></tr></thead>
-          <tbody id="del-body"></tbody>
-        </table>
-      </div>
+      <div id="del-boxes"></div>
     </section>
   `;
-  const body = document.getElementById("del-body");
-  body.innerHTML = items.length ? items.map(i=>`
-    <tr>
-      <td class="mono">${escapeHtml(i.invoiceNo)}</td>
-      <td>${escapeHtml(i.customer)}</td>
-      <td>${escapeHtml(i.productName)}${i.fromBundle?`<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">from bundle: ${escapeHtml(i.fromBundle)}</div>`:""}</td>
-      <td class="num">${i.qty}</td>
-      <td><button class="badge ${i.status==='Delivered'?'ok':'warn'}" data-toggle-del="${escapeHtml(i.key)}" style="border:none;cursor:pointer;">${i.status}</button></td>
-    </tr>
-  `).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">📦</div>No deliverable items match this filter.</div></td></tr>`;
+  const wrap = document.getElementById("del-boxes");
+  wrap.innerHTML = orders.length ? orders.map(o=>`
+    <div class="order-box">
+      <div class="ob-head">
+        <div>
+          <div class="ob-title">${escapeHtml(o.invoiceNo)}</div>
+          <div class="ob-sub">${escapeHtml(o.customer)} &middot; ${escapeHtml(o.date)} &middot; ${fmtEGP(o.grand)}</div>
+        </div>
+        <button class="badge ${o.status==='Delivered'?'ok':'warn'}" data-toggle-order="${escapeHtml(o.invoiceNo)}" style="border:none;cursor:pointer;font-size:12px;padding:5px 12px;">
+          ${o.status==='Delivered' ? '✓ Delivered — undo' : 'Confirm order delivered'}
+        </button>
+      </div>
+      <ul class="ob-items">
+        ${o.items.map(it=>`<li><span>${escapeHtml(it.name)}</span><span class="qty">&times; ${it.qty}</span></li>`).join("")}
+      </ul>
+    </div>
+  `).join("") : `<div class="empty-state"><div class="glyph">📦</div>No ${deliveryFilter.status==="All"?"":deliveryFilter.status.toLowerCase()+" "}paid orders match this filter.</div>`;
 
   document.getElementById("del-search").addEventListener("input", e=>{ deliveryFilter.q=e.target.value; renderDelivery(app); });
   document.getElementById("del-status").addEventListener("change", e=>{ deliveryFilter.status=e.target.value; renderDelivery(app); });
-  body.querySelectorAll("[data-toggle-del]").forEach(b=>b.addEventListener("click", async ()=>{
-    const key = b.dataset.toggleDel;
-    STATE.delivery[key] = (STATE.delivery[key]==="Delivered") ? "Pending" : "Delivered";
+  wrap.querySelectorAll("[data-toggle-order]").forEach(b=>b.addEventListener("click", async ()=>{
+    const no = b.dataset.toggleOrder;
+    STATE.delivery[no] = (STATE.delivery[no]==="Delivered") ? "Pending" : "Delivered";
     await saveState(); renderDelivery(app);
   }));
 }
@@ -805,74 +1191,177 @@ function renderSalesLog(app){
 }
 
 /* ============================= INVOICES ============================= */
+const INVOICE_STANDALONE_CSS = `
+  :root{--ink:#152420;--ink-soft:#4b5b54;--line:#d7ddd4;--primary:#0f5c52;--primary-dark:#0a3f38;--accent:#c07a2b;--warn-tint:#f6ecd4;--warn:#b8811f;--ok-tint:#dfeee2;--ok:#3c7a4c;--surface-2:#f4f6f2;}
+  *{box-sizing:border-box;} body{margin:0;padding:32px;background:#f2f4ef;font-family:'Public Sans',-apple-system,sans-serif;color:var(--ink);font-size:14px;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  table{border-collapse:collapse;width:100%;font-size:13px;}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);padding:8px 10px;border-bottom:2px solid var(--line);font-weight:700;background:var(--surface-2);}
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--line);}
+  td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+  .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line);}
+  .table-wrap table{border:none;}
+  .badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;}
+  .badge.ok{background:var(--ok-tint);color:var(--ok);} .badge.warn{background:var(--warn-tint);color:var(--warn);}
+  .invoice-doc{background:#fff;border:1px solid var(--line);border-radius:10px;padding:32px;max-width:760px;margin:0 auto;}
+  .invoice-doc .idoc-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--primary-dark);padding-bottom:16px;margin-bottom:20px;}
+  .invoice-doc .idoc-head h3{margin:0;font-size:20px;color:var(--primary-dark);letter-spacing:-.01em;}
+  .invoice-doc .idoc-head .num{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--accent);font-weight:700;}
+  .idoc-meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px;}
+  .idoc-meta div div.k{font-size:10.5px;text-transform:uppercase;color:var(--ink-soft);letter-spacing:.06em;font-weight:700;}
+  .idoc-meta div div.v{font-size:14px;margin-top:2px;}
+  .idoc-totals{margin-top:14px;width:280px;margin-left:auto;}
+  .idoc-totals div.trow{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;}
+  .idoc-totals div.trow.grand{border-top:2px solid var(--primary-dark);margin-top:6px;padding-top:10px;font-weight:800;font-size:16px;color:var(--primary-dark);}
+`;
+
+function invoiceDocMarkup(no, rows){
+  if(!rows || rows.length===0) return "";
+  const {subtotal, discount, grand} = invoiceSummary(rows);
+  const h = rows[0];
+  return `
+    <div class="invoice-doc">
+      <div class="idoc-head">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <img src="${EDS_LOGO_DATA_URI}" alt="EDS logo" style="height:46px;width:auto;">
+          <div>
+            <h3>EDS EVENT SALES — INVOICE</h3>
+            <div style="color:var(--ink-soft);font-size:12.5px;margin-top:2px;">Marketplace powered by DAF</div>
+          </div>
+        </div>
+        <div class="num">${escapeHtml(no)}</div>
+      </div>
+      <div class="idoc-meta">
+        <div><div class="k">Customer</div><div class="v">${escapeHtml(h.customer)||"—"}</div></div>
+        <div><div class="k">Date</div><div class="v mono">${escapeHtml(h.date)||"—"}</div></div>
+        <div><div class="k">User ID</div><div class="v mono">${escapeHtml(h.userId)||"—"}</div></div>
+        <div><div class="k">Payment Status</div><div class="v"><span class="badge ${h.paymentStatus==='Paid'?'ok':'warn'}">${h.paymentStatus}</span></div></div>
+        <div><div class="k">Payment Method</div><div class="v">${escapeHtml(h.paymentMethod)||"—"}</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Disc %</th><th class="num">Disc (EGP)</th><th class="num">Line Total</th></tr></thead>
+          <tbody>
+            ${rows.map(r=>{
+              const {discountAmt, lineTotal} = lineCalc(r.qty,r.unitPrice,r.discountPct);
+              return `<tr><td>${escapeHtml(r.productName)}</td><td class="num">${r.qty}</td><td class="num">${fmtEGP(r.unitPrice)}</td><td class="num">${r.discountPct}%</td><td class="num">${fmtEGP(discountAmt)}</td><td class="num">${fmtEGP(lineTotal)}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="idoc-totals">
+        <div class="trow"><span>Subtotal</span><span class="mono">${fmtEGP(subtotal)}</span></div>
+        <div class="trow"><span>Total discount</span><span class="mono">−${fmtEGP(discount)}</span></div>
+        <div class="trow grand"><span>Grand total</span><span class="mono">${fmtEGP(grand)}</span></div>
+      </div>
+      ${h.notes?`<div style="margin-top:20px;font-size:12.5px;color:var(--ink-soft);"><strong>Notes:</strong> ${escapeHtml(h.notes)}</div>`:""}
+    </div>
+  `;
+}
+
+function buildInvoiceStandaloneHTML(no, rows){
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>${escapeHtml(no)} — EDS Invoice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>${INVOICE_STANDALONE_CSS}</style>
+</head><body>${invoiceDocMarkup(no, rows)}</body></html>`;
+}
+
+function downloadBlobHTML(filename, html){
+  const blob = new Blob([html], {type:"text/html"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+let invoiceSearchUserId = "";
 function renderInvoices(app){
   const map = invoiceList();
-  const invoices = [...map.keys()].sort();
+  function matchingInvoices(){
+    let list = [...map.keys()];
+    if(invoiceSearchUserId){
+      const q = invoiceSearchUserId.toLowerCase();
+      list = list.filter(no=>{
+        const rows = map.get(no) || [];
+        return rows.length && (rows[0].userId||"").toLowerCase().includes(q);
+      });
+    }
+    return list.sort();
+  }
   app.innerHTML = `
     <section>
       <h2 class="section-title no-print">Invoice lookup</h2>
-      <p class="section-desc no-print">Select an invoice number to view its formatted document — mirrors the Invoice Template sheet.</p>
+      <p class="section-desc no-print">Select an invoice number to view its formatted document, or search by User ID to narrow the list.</p>
       <div class="toolbar no-print">
         <div class="field">
-          <label class="field-label">Invoice No.</label>
-          <select id="invoice-select">
-            <option value="">Select invoice…</option>
-            ${invoices.map(no=>`<option value="${escapeHtml(no)}">${escapeHtml(no)}</option>`).join("")}
-          </select>
+          <label class="field-label">Search by User ID</label>
+          <input id="invoice-userid-search" placeholder="e.g. u-104" value="${escapeHtml(invoiceSearchUserId)}">
         </div>
-        <button class="btn ghost" id="print-invoice" style="align-self:end;">Print</button>
+        <div class="field">
+          <label class="field-label">Invoice No.</label>
+          <select id="invoice-select"></select>
+        </div>
+        <button class="btn ghost" id="open-invoice" style="align-self:end;" disabled>Open in browser</button>
+        <button class="btn ghost" id="download-invoice" style="align-self:end;" disabled>Download (.html)</button>
+        <button class="btn ghost" id="print-invoice" style="align-self:end;" disabled>Print</button>
       </div>
       <div id="invoice-doc"></div>
     </section>
   `;
   const sel = document.getElementById("invoice-select");
   const target = document.getElementById("invoice-doc");
+  const openBtn = document.getElementById("open-invoice");
+  const downloadBtn = document.getElementById("download-invoice");
+  const printBtn = document.getElementById("print-invoice");
+  let selectedNo = "";
+
+  function populateSelect(preserve){
+    const invoices = matchingInvoices();
+    sel.innerHTML = `<option value="">Select invoice…</option>` + invoices.map(no=>`<option value="${escapeHtml(no)}">${escapeHtml(no)}</option>`).join("");
+    if(preserve && invoices.includes(preserve)){
+      sel.value = preserve;
+    } else if(invoices.length===1){
+      sel.value = invoices[0];
+      draw(invoices[0]);
+      return;
+    } else {
+      sel.value = "";
+      draw("");
+    }
+  }
+
   function draw(no){
+    selectedNo = no;
+    const enabled = !!(no && map.get(no) && map.get(no).length);
+    openBtn.disabled = !enabled; downloadBtn.disabled = !enabled; printBtn.disabled = !enabled;
     if(!no){ target.innerHTML = `<div class="empty-state"><div class="glyph">🧾</div>Pick an invoice number above to view it.</div>`; return; }
     const rows = map.get(no) || [];
     if(rows.length===0){ target.innerHTML = `<div class="empty-state">No such invoice.</div>`; return; }
-    const {subtotal, discount, grand} = invoiceSummary(rows);
-    const h = rows[0];
-    target.innerHTML = `
-      <div class="invoice-doc">
-        <div class="idoc-head">
-          <div>
-            <h3>EDS EVENT SALES — INVOICE</h3>
-            <div style="color:var(--ink-soft);font-size:12.5px;margin-top:2px;">EDS Event Sales</div>
-          </div>
-          <div class="num">${escapeHtml(no)}</div>
-        </div>
-        <div class="idoc-meta">
-          <div><div class="k">Customer</div><div class="v">${escapeHtml(h.customer)||"—"}</div></div>
-          <div><div class="k">Date</div><div class="v mono">${escapeHtml(h.date)||"—"}</div></div>
-          <div><div class="k">User ID</div><div class="v mono">${escapeHtml(h.userId)||"—"}</div></div>
-          <div><div class="k">Payment Status</div><div class="v"><span class="badge ${h.paymentStatus==='Paid'?'ok':'warn'}">${h.paymentStatus}</span></div></div>
-          <div><div class="k">Salesperson</div><div class="v">${escapeHtml(h.salesperson)||"—"}</div></div>
-          <div><div class="k">Payment Method</div><div class="v">${escapeHtml(h.paymentMethod)||"—"}</div></div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Disc %</th><th class="num">Disc (EGP)</th><th class="num">Line Total</th></tr></thead>
-            <tbody>
-              ${rows.map(r=>{
-                const {discountAmt, lineTotal} = lineCalc(r.qty,r.unitPrice,r.discountPct);
-                return `<tr><td>${escapeHtml(r.productName)}</td><td class="num">${r.qty}</td><td class="num">${fmtEGP(r.unitPrice)}</td><td class="num">${r.discountPct}%</td><td class="num">${fmtEGP(discountAmt)}</td><td class="num">${fmtEGP(lineTotal)}</td></tr>`;
-              }).join("")}
-            </tbody>
-          </table>
-        </div>
-        <div class="idoc-totals">
-          <div class="trow"><span>Subtotal</span><span class="mono">${fmtEGP(subtotal)}</span></div>
-          <div class="trow"><span>Total discount</span><span class="mono">−${fmtEGP(discount)}</span></div>
-          <div class="trow grand"><span>Grand total</span><span class="mono">${fmtEGP(grand)}</span></div>
-        </div>
-        ${h.notes?`<div style="margin-top:20px;font-size:12.5px;color:var(--ink-soft);"><strong>Notes:</strong> ${escapeHtml(h.notes)}</div>`:""}
-      </div>
-    `;
+    target.innerHTML = invoiceDocMarkup(no, rows);
   }
+  document.getElementById("invoice-userid-search").addEventListener("input", e=>{
+    invoiceSearchUserId = e.target.value;
+    populateSelect(selectedNo);
+  });
   sel.addEventListener("change", e=>draw(e.target.value));
-  document.getElementById("print-invoice").addEventListener("click", ()=>window.print());
-  draw("");
+  printBtn.addEventListener("click", ()=>window.print());
+  downloadBtn.addEventListener("click", ()=>{
+    if(!selectedNo) return;
+    const html = buildInvoiceStandaloneHTML(selectedNo, map.get(selectedNo)||[]);
+    downloadBlobHTML(`${selectedNo}.html`, html);
+  });
+  openBtn.addEventListener("click", ()=>{
+    if(!selectedNo) return;
+    const html = buildInvoiceStandaloneHTML(selectedNo, map.get(selectedNo)||[]);
+    const blob = new Blob([html], {type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(()=>URL.revokeObjectURL(url), 15000);
+  });
+  populateSelect();
 }
 
 /* ============================= STOCK CONTROL ============================= */
@@ -926,6 +1415,102 @@ function renderStock(app){
   body.querySelectorAll("[data-reorder]").forEach(inp=>inp.addEventListener("change", async e=>{
     STATE.reorder[e.target.dataset.reorder] = Number(e.target.value)||0;
     await saveState(); renderStock(app);
+  }));
+}
+
+/* ============================= USERS ============================= */
+let newUserForm = null;
+function freshUserForm(){
+  const access = {};
+  TABS.forEach(t=>access[t.id] = (t.id==="dashboard"||t.id==="orders")); // sensible default
+  return { name:"", password:"", access };
+}
+function renderUsers(app){
+  if(!newUserForm) newUserForm = freshUserForm();
+  app.innerHTML = `
+    <section style="margin-bottom:26px;">
+      <h2 class="section-title">Users &amp; access</h2>
+      <p class="section-desc">Create a user with a name, password, and exactly which sections they can see. They'll log in with those on the login screen. Only the real Admin login can preview other users' views via "Viewing as".</p>
+      <div id="user-list"></div>
+    </section>
+    <section>
+      <div class="card" style="max-width:520px;">
+        <h3 style="margin:0 0 12px;font-size:13.5px;">Add user</h3>
+        <div class="grid cols-2">
+          <div class="field"><label class="field-label">Name</label><input id="nu-name" placeholder="e.g. Delivery Team" value="${escapeHtml(newUserForm.name)}"></div>
+          <div class="field"><label class="field-label">Password</label><input id="nu-password" type="text" placeholder="Login password" value="${escapeHtml(newUserForm.password)}"></div>
+        </div>
+        <label class="field-label">Can see</label>
+        <div class="checkbox-grid" id="nu-access">
+          ${TABS.map(t=>`
+            <label><input type="checkbox" data-access="${t.id}" ${newUserForm.access[t.id]?"checked":""}> ${t.label}</label>
+          `).join("")}
+        </div>
+        <button class="btn primary" id="nu-save">Add user</button>
+      </div>
+    </section>
+  `;
+
+  document.getElementById("user-list").innerHTML = STATE.users.map(u=>`
+    <div class="user-card">
+      <div class="uc-head">
+        <div>
+          <strong>${escapeHtml(u.name)}</strong>
+          ${u.id===ADMIN_ID?'<span class="badge tint" style="margin-left:6px;">full access</span>':''}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn ghost sm" data-set-password="${escapeHtml(u.id)}">Set password</button>
+          ${u.id!==ADMIN_ID ? `<button class="btn danger-ghost sm" data-del-user="${escapeHtml(u.id)}">Delete</button>` : ""}
+        </div>
+      </div>
+      <div class="uc-access">
+        ${u.id===ADMIN_ID
+          ? `<span class="badge muted">everything</span>`
+          : (u.access.length ? u.access.map(a=>{
+              const t = TABS.find(x=>x.id===a);
+              return `<span class="badge tint">${escapeHtml(t?t.label:a)}</span>`;
+            }).join("") : `<span class="badge muted">no access yet</span>`)
+        }
+      </div>
+    </div>
+  `).join("");
+
+  document.getElementById("nu-name").addEventListener("input", e=>{ newUserForm.name = e.target.value; });
+  document.getElementById("nu-password").addEventListener("input", e=>{ newUserForm.password = e.target.value; });
+  document.querySelectorAll("#nu-access [data-access]").forEach(cb=>{
+    cb.addEventListener("change", e=>{ newUserForm.access[e.target.dataset.access] = e.target.checked; });
+  });
+  document.getElementById("nu-save").addEventListener("click", async ()=>{
+    const name = newUserForm.name.trim();
+    const password = newUserForm.password;
+    if(!name){ alert("Give the user a name."); return; }
+    if(!password){ alert("Set a password for this user."); return; }
+    if(STATE.users.find(u=>u.name.trim().toLowerCase()===name.toLowerCase())){ alert("A user with that name already exists."); return; }
+    const access = Object.entries(newUserForm.access).filter(([,v])=>v).map(([k])=>k);
+    STATE.users.push({ id: uid(), name, password, access });
+    await saveState();
+    newUserForm = freshUserForm();
+    renderUsers(app);
+  });
+  document.querySelectorAll("[data-del-user]").forEach(b=>b.addEventListener("click", async ()=>{
+    const id = b.dataset.delUser;
+    const u = STATE.users.find(x=>x.id===id);
+    if(!confirm(`Remove user "${u?u.name:""}"?`)) return;
+    STATE.users = STATE.users.filter(x=>x.id!==id);
+    if(STATE.currentUserId===id) STATE.currentUserId = ADMIN_ID;
+    await saveState();
+    renderUsers(app);
+  }));
+  document.querySelectorAll("[data-set-password]").forEach(b=>b.addEventListener("click", async ()=>{
+    const id = b.dataset.setPassword;
+    const u = STATE.users.find(x=>x.id===id);
+    if(!u) return;
+    const next = window.prompt(`New password for "${u.name}":`, "");
+    if(next===null) return;
+    if(!next){ alert("Password can't be empty."); return; }
+    u.password = next;
+    await saveState();
+    alert("Password updated.");
   }));
 }
 
