@@ -221,9 +221,10 @@ PRODUCTS.filter(p => p.type === "Bundle").forEach(b => {
 
 /* ============================= STATE ============================= */
 let STATE = {
-  sales: [],       // {id, invoiceNo, date, customer, userId, salesperson, paymentStatus, paymentMethod, deliveryStatus, notes, productName, qty, unitPrice, discountPct}
+  sales: [],       // {id, invoiceNo, date, customer, userId, salesperson, paymentStatus, paymentMethod, notes, productName, qty, unitPrice, discountPct}
   restock: {},      // productName -> number
   reorder: {},      // productName -> number
+  delivery: {},     // deliveryItemKey -> "Pending" | "Delivered"  (keyed per actual product, bundles exploded into components)
 };
 let loaded = false;
 let activeTab = "dashboard";
@@ -316,11 +317,44 @@ function escapeHtml(s){
 const TABS = [
   {id:"dashboard", label:"Dashboard"},
   {id:"products", label:"Products"},
-  {id:"newsale", label:"New Sale"},
+  {id:"orders", label:"Orders"},
+  {id:"payments", label:"Payments"},
+  {id:"delivery", label:"Delivery"},
   {id:"saleslog", label:"Sales Log"},
   {id:"invoices", label:"Invoices"},
   {id:"stock", label:"Stock Control"},
 ];
+
+/* ---- Delivery items: every sale line exploded down to real, deliverable
+   products. A bundle line becomes one delivery item per component, named
+   after the component product — never the bundle name. Status is tracked
+   per delivery item (not per sale line), keyed by saleId (+ component index
+   for bundle lines) so it survives independently of payment status. ---- */
+function deliveryItems(){
+  const items = [];
+  STATE.sales.forEach(s=>{
+    const p = productByName[s.productName];
+    if(!p) return;
+    if(p.type === "Individual"){
+      const key = s.id;
+      items.push({
+        key, invoiceNo:s.invoiceNo, customer:s.customer, date:s.date,
+        productName:s.productName, qty:Number(s.qty), fromBundle:null,
+        status: STATE.delivery[key] || "Pending"
+      });
+    } else {
+      p.components.forEach((c, idx)=>{
+        const key = s.id + ":" + idx;
+        items.push({
+          key, invoiceNo:s.invoiceNo, customer:s.customer, date:s.date,
+          productName:c.name, qty:c.qty*Number(s.qty), fromBundle:s.productName,
+          status: STATE.delivery[key] || "Pending"
+        });
+      });
+    }
+  });
+  return items;
+}
 
 function renderTabs(){
   const nav = document.getElementById("tabs");
@@ -336,7 +370,9 @@ function render(){
   if(!loaded){ app.innerHTML = `<div class="empty-state">Loading console…</div>`; return; }
   if(activeTab==="dashboard") return renderDashboard(app);
   if(activeTab==="products") return renderProducts(app);
-  if(activeTab==="newsale") return renderNewSale(app);
+  if(activeTab==="orders") return renderNewSale(app);
+  if(activeTab==="payments") return renderPayments(app);
+  if(activeTab==="delivery") return renderDelivery(app);
   if(activeTab==="saleslog") return renderSalesLog(app);
   if(activeTab==="invoices") return renderInvoices(app);
   if(activeTab==="stock") return renderStock(app);
@@ -355,17 +391,22 @@ function renderDashboard(app){
   const stock = stockRows();
   const outCount = stock.filter(s=>s.status==="OUT OF STOCK").length;
   const lowCount = stock.filter(s=>s.status==="LOW STOCK").length;
+  const delItems = deliveryItems();
+  const delPending = delItems.filter(d=>d.status==="Pending").length;
 
   const recent = [...invMap.entries()].slice(-5).reverse();
 
   app.innerHTML = `
     <section style="margin-bottom:26px;">
       <h2 class="section-title">Overview</h2>
-      <p class="section-desc">Live totals computed from every sale recorded in the Sales Log.</p>
+      <p class="section-desc">Live totals computed from every order recorded in the Sales Log.</p>
       <div class="grid cols-4">
         <div class="card stat"><div class="label">Invoices</div><div class="value">${totalInvoices}</div><div class="note">unique invoice numbers</div></div>
         <div class="card stat"><div class="label">Revenue (Paid)</div><div class="value">${fmtEGP(revenue)}</div><div class="note">fully paid invoices</div></div>
         <div class="card stat"><div class="label">Outstanding</div><div class="value warn">${fmtEGP(outstanding)}</div><div class="note">unpaid / partially unpaid</div></div>
+        <div class="card stat"><div class="label">Deliveries Pending</div><div class="value ${delPending>0?'warn':''}">${delPending}</div><div class="note">of ${delItems.length} product units</div></div>
+      </div>
+      <div class="grid cols-4" style="margin-top:14px;">
         <div class="card stat"><div class="label">Stock Alerts</div><div class="value ${outCount>0?'danger':(lowCount>0?'warn':'')}">${outCount+lowCount}</div><div class="note">${outCount} out · ${lowCount} low</div></div>
       </div>
     </section>
@@ -426,9 +467,6 @@ function freshNewSale(){
     customer: "",
     userId: "",
     salesperson: "",
-    paymentStatus: "Unpaid",
-    paymentMethod: "Cash",
-    deliveryStatus: "Pending",
     notes: "",
     lines: [freshLine()]
   };
@@ -454,8 +492,8 @@ function renderNewSale(app){
 
   app.innerHTML = `
     <section>
-      <h2 class="section-title">New sale / invoice</h2>
-      <p class="section-desc">Add one or more product lines under a single invoice number — mirrors a row-group in the Sales sheet.</p>
+      <h2 class="section-title">Orders</h2>
+      <p class="section-desc">Create an order: who's buying and what's on it. Payment is handled in <strong>Payments</strong>, delivery in <strong>Delivery</strong> — both apply automatically once you save.</p>
 
       <div class="card" style="margin-bottom:16px;">
         <div class="grid cols-4">
@@ -466,15 +504,6 @@ function renderNewSale(app){
         </div>
         <div class="grid cols-4">
           <div class="field"><label class="field-label">Salesperson</label><input id="f-salesperson" placeholder="Rep name" value="${escapeHtml(f.salesperson)}"></div>
-          <div class="field"><label class="field-label">Payment Status</label>
-            <select id="f-paymentStatus"><option ${f.paymentStatus==="Unpaid"?"selected":""}>Unpaid</option><option ${f.paymentStatus==="Paid"?"selected":""}>Paid</option></select>
-          </div>
-          <div class="field"><label class="field-label">Payment Method</label>
-            <select id="f-paymentMethod">${PAYMENT_METHODS.map(m=>`<option ${f.paymentMethod===m?"selected":""}>${m}</option>`).join("")}</select>
-          </div>
-          <div class="field"><label class="field-label">Delivery Status</label>
-            <select id="f-deliveryStatus">${DELIVERY_STATUSES.map(m=>`<option ${f.deliveryStatus===m?"selected":""}>${m}</option>`).join("")}</select>
-          </div>
         </div>
         <div class="field"><label class="field-label">Notes</label><textarea id="f-notes" rows="2" placeholder="Optional notes">${escapeHtml(f.notes)}</textarea></div>
       </div>
@@ -499,7 +528,7 @@ function renderNewSale(app){
       </div>
 
       <div style="margin-top:16px;display:flex;gap:10px;">
-        <button class="btn primary" id="save-invoice">Save invoice</button>
+        <button class="btn primary" id="save-invoice">Save order</button>
         <button class="btn ghost" id="reset-invoice">Reset form</button>
       </div>
     </section>
@@ -526,9 +555,6 @@ function renderNewSale(app){
   const bind = (id,key)=>document.getElementById(id).addEventListener("input", e=>{ f[key]=e.target.value; });
   bind("f-invoiceNo","invoiceNo"); bind("f-date","date"); bind("f-customer","customer");
   bind("f-userId","userId"); bind("f-salesperson","salesperson"); bind("f-notes","notes");
-  document.getElementById("f-paymentStatus").addEventListener("change", e=>f.paymentStatus=e.target.value);
-  document.getElementById("f-paymentMethod").addEventListener("change", e=>f.paymentMethod=e.target.value);
-  document.getElementById("f-deliveryStatus").addEventListener("change", e=>f.deliveryStatus=e.target.value);
 
   document.getElementById("add-line").addEventListener("click", ()=>{ f.lines.push(freshLine()); render(); });
 
@@ -563,9 +589,8 @@ function renderNewSale(app){
         customer: f.customer,
         userId: f.userId,
         salesperson: f.salesperson,
-        paymentStatus: f.paymentStatus,
-        paymentMethod: f.paymentMethod,
-        deliveryStatus: f.deliveryStatus,
+        paymentStatus: "Unpaid",
+        paymentMethod: "",
         notes: f.notes,
         productName: l.productName,
         qty: Number(l.qty),
@@ -576,13 +601,143 @@ function renderNewSale(app){
     await saveState();
     const savedNo = f.invoiceNo;
     newSaleForm = freshNewSale();
-    activeTab = "invoices";
+    activeTab = "payments";
     render();
-    setTimeout(()=>{
-      const sel = document.getElementById("invoice-select");
-      if(sel){ sel.value = savedNo; sel.dispatchEvent(new Event("change")); }
-    },0);
   });
+}
+
+/* ============================= PAYMENTS ============================= */
+let paymentFilter = { status:"All", q:"" };
+function renderPayments(app){
+  const map = invoiceList();
+  let invoices = [...map.entries()].map(([no, rows])=>{
+    const {grand} = invoiceSummary(rows);
+    const h = rows[0];
+    // an invoice counts as Paid only once every line on it is Paid
+    const status = rows.every(r=>r.paymentStatus==="Paid") ? "Paid" : "Unpaid";
+    return {no, rows, grand, status, customer:h.customer, date:h.date, method: rows.every(r=>r.paymentMethod===rows[0].paymentMethod) ? (rows[0].paymentMethod||"") : "Mixed"};
+  });
+  if(paymentFilter.status!=="All") invoices = invoices.filter(i=>i.status===paymentFilter.status);
+  if(paymentFilter.q){
+    const q = paymentFilter.q.toLowerCase();
+    invoices = invoices.filter(i=>i.no.toLowerCase().includes(q) || i.customer.toLowerCase().includes(q));
+  }
+  invoices.sort((a,b)=> a.no < b.no ? 1 : -1);
+
+  const totalOutstanding = invoices.filter(i=>i.status==="Unpaid").reduce((a,i)=>a+i.grand,0);
+
+  app.innerHTML = `
+    <section>
+      <h2 class="section-title">Payments</h2>
+      <p class="section-desc">Mark an invoice Paid and record how it was paid — separate from creating the order or fulfilling delivery.</p>
+      <div class="grid cols-3" style="margin-bottom:18px;">
+        <div class="card stat"><div class="label">Invoices</div><div class="value">${invoices.length}</div></div>
+        <div class="card stat"><div class="label">Outstanding</div><div class="value warn">${fmtEGP(totalOutstanding)}</div></div>
+        <div class="card stat"><div class="label">Unpaid Invoices</div><div class="value danger">${invoices.filter(i=>i.status==="Unpaid").length}</div></div>
+      </div>
+      <div class="toolbar">
+        <div class="field"><label class="field-label">Search</label><input id="pay-search" placeholder="Invoice or customer…" value="${escapeHtml(paymentFilter.q)}"></div>
+        <div class="field"><label class="field-label">Status</label>
+          <select id="pay-status">${["All","Paid","Unpaid"].map(s=>`<option ${paymentFilter.status===s?"selected":""}>${s}</option>`).join("")}</select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th class="num">Grand Total</th><th>Payment Method</th><th>Status</th></tr></thead>
+          <tbody id="pay-body"></tbody>
+        </table>
+      </div>
+    </section>
+  `;
+  const body = document.getElementById("pay-body");
+  body.innerHTML = invoices.length ? invoices.map(i=>`
+    <tr>
+      <td class="mono">${escapeHtml(i.no)}</td>
+      <td>${escapeHtml(i.customer)}</td>
+      <td class="mono">${escapeHtml(i.date)}</td>
+      <td class="num mono">${fmtEGP(i.grand)}</td>
+      <td>
+        <select data-method="${escapeHtml(i.no)}" style="width:150px;">
+          <option value="" ${!i.method||i.method==="Mixed"?"selected":""}>${i.method==="Mixed"?"Mixed":"—"}</option>
+          ${PAYMENT_METHODS.map(m=>`<option value="${m}" ${i.method===m?"selected":""}>${m}</option>`).join("")}
+        </select>
+      </td>
+      <td><button class="badge ${i.status==='Paid'?'ok':'warn'}" data-toggle-invoice="${escapeHtml(i.no)}" style="border:none;cursor:pointer;">${i.status}</button></td>
+    </tr>
+  `).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="glyph">💳</div>No invoices match this filter.</div></td></tr>`;
+
+  document.getElementById("pay-search").addEventListener("input", e=>{ paymentFilter.q=e.target.value; renderPayments(app); });
+  document.getElementById("pay-status").addEventListener("change", e=>{ paymentFilter.status=e.target.value; renderPayments(app); });
+  body.querySelectorAll("[data-toggle-invoice]").forEach(b=>b.addEventListener("click", async ()=>{
+    const no = b.dataset.toggleInvoice;
+    const rows = map.get(no) || [];
+    const nowPaid = !rows.every(r=>r.paymentStatus==="Paid");
+    rows.forEach(r=> r.paymentStatus = nowPaid ? "Paid" : "Unpaid");
+    await saveState(); renderPayments(app);
+  }));
+  body.querySelectorAll("[data-method]").forEach(sel=>sel.addEventListener("change", async e=>{
+    const no = e.target.dataset.method;
+    const rows = map.get(no) || [];
+    rows.forEach(r=> r.paymentMethod = e.target.value);
+    await saveState(); renderPayments(app);
+  }));
+}
+
+/* ============================= DELIVERY ============================= */
+let deliveryFilter = { status:"All", q:"" };
+function renderDelivery(app){
+  let items = deliveryItems();
+  if(deliveryFilter.status!=="All") items = items.filter(i=>i.status===deliveryFilter.status);
+  if(deliveryFilter.q){
+    const q = deliveryFilter.q.toLowerCase();
+    items = items.filter(i=> i.invoiceNo.toLowerCase().includes(q) || i.customer.toLowerCase().includes(q) || i.productName.toLowerCase().includes(q));
+  }
+  items.sort((a,b)=> a.invoiceNo < b.invoiceNo ? 1 : -1);
+
+  const pendingCount = deliveryItems().filter(i=>i.status==="Pending").length;
+  const deliveredCount = deliveryItems().filter(i=>i.status==="Delivered").length;
+
+  app.innerHTML = `
+    <section>
+      <h2 class="section-title">Delivery</h2>
+      <p class="section-desc">One line per <strong>product actually being handed over</strong> — bundles are broken down into their real components here, never shown as the bundle name.</p>
+      <div class="grid cols-3" style="margin-bottom:18px;">
+        <div class="card stat"><div class="label">Product units to deliver</div><div class="value">${deliveryItems().length}</div></div>
+        <div class="card stat"><div class="label">Pending</div><div class="value warn">${pendingCount}</div></div>
+        <div class="card stat"><div class="label">Delivered</div><div class="value">${deliveredCount}</div></div>
+      </div>
+      <div class="toolbar">
+        <div class="field"><label class="field-label">Search</label><input id="del-search" placeholder="Invoice, customer, product…" value="${escapeHtml(deliveryFilter.q)}"></div>
+        <div class="field"><label class="field-label">Status</label>
+          <select id="del-status">${["All","Pending","Delivered"].map(s=>`<option ${deliveryFilter.status===s?"selected":""}>${s}</option>`).join("")}</select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Invoice</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th>Status</th></tr></thead>
+          <tbody id="del-body"></tbody>
+        </table>
+      </div>
+    </section>
+  `;
+  const body = document.getElementById("del-body");
+  body.innerHTML = items.length ? items.map(i=>`
+    <tr>
+      <td class="mono">${escapeHtml(i.invoiceNo)}</td>
+      <td>${escapeHtml(i.customer)}</td>
+      <td>${escapeHtml(i.productName)}${i.fromBundle?`<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">from bundle: ${escapeHtml(i.fromBundle)}</div>`:""}</td>
+      <td class="num">${i.qty}</td>
+      <td><button class="badge ${i.status==='Delivered'?'ok':'warn'}" data-toggle-del="${escapeHtml(i.key)}" style="border:none;cursor:pointer;">${i.status}</button></td>
+    </tr>
+  `).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">📦</div>No deliverable items match this filter.</div></td></tr>`;
+
+  document.getElementById("del-search").addEventListener("input", e=>{ deliveryFilter.q=e.target.value; renderDelivery(app); });
+  document.getElementById("del-status").addEventListener("change", e=>{ deliveryFilter.status=e.target.value; renderDelivery(app); });
+  body.querySelectorAll("[data-toggle-del]").forEach(b=>b.addEventListener("click", async ()=>{
+    const key = b.dataset.toggleDel;
+    STATE.delivery[key] = (STATE.delivery[key]==="Delivered") ? "Pending" : "Delivered";
+    await saveState(); renderDelivery(app);
+  }));
 }
 
 /* ============================= SALES LOG ============================= */
@@ -600,7 +755,7 @@ function renderSalesLog(app){
   app.innerHTML = `
     <section>
       <h2 class="section-title">Sales log</h2>
-      <p class="section-desc">Every product line recorded across all invoices — matches the Sales sheet's flat table.</p>
+      <p class="section-desc">Read-only audit trail of every order line. Edit payment in <strong>Payments</strong>, delivery in <strong>Delivery</strong>.</p>
       <div class="toolbar">
         <div class="field"><label class="field-label">Search</label><input id="log-search" placeholder="Invoice, customer, product…" value="${escapeHtml(saleLogFilter.q)}"></div>
         <div class="field"><label class="field-label">Payment status</label>
@@ -613,7 +768,7 @@ function renderSalesLog(app){
         <table>
           <thead><tr>
             <th>Invoice</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th>
-            <th class="num">Unit Price</th><th class="num">Line Total</th><th>Payment</th><th>Delivery</th><th></th>
+            <th class="num">Unit Price</th><th class="num">Line Total</th><th>Payment</th><th></th>
           </tr></thead>
           <tbody id="log-body"></tbody>
         </table>
@@ -622,7 +777,7 @@ function renderSalesLog(app){
   `;
   const body = document.getElementById("log-body");
   if(rows.length===0){
-    body.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="glyph">📄</div>No sales match this filter.</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="glyph">📄</div>No sales match this filter.</div></td></tr>`;
   } else {
     body.innerHTML = rows.map(s=>{
       const {lineTotal} = lineCalc(s.qty,s.unitPrice,s.discountPct);
@@ -634,8 +789,7 @@ function renderSalesLog(app){
         <td class="num">${s.qty}</td>
         <td class="num">${fmtEGP(s.unitPrice)}</td>
         <td class="num">${fmtEGP(lineTotal)}</td>
-        <td><button class="badge ${s.paymentStatus==='Paid'?'ok':'warn'}" data-toggle-pay="${s.id}" style="border:none;cursor:pointer;">${s.paymentStatus}</button></td>
-        <td><button class="badge ${s.deliveryStatus==='Delivered'?'ok':'muted'}" data-toggle-del="${s.id}" style="border:none;cursor:pointer;">${s.deliveryStatus}</button></td>
+        <td><span class="badge ${s.paymentStatus==='Paid'?'ok':'warn'}">${s.paymentStatus}</span></td>
         <td><button class="btn danger-ghost sm" data-del="${s.id}">Delete</button></td>
       </tr>`;
     }).join("");
@@ -643,16 +797,6 @@ function renderSalesLog(app){
 
   document.getElementById("log-search").addEventListener("input", e=>{ saleLogFilter.q=e.target.value; renderSalesLog(app); });
   document.getElementById("log-status").addEventListener("change", e=>{ saleLogFilter.status=e.target.value; renderSalesLog(app); });
-  body.querySelectorAll("[data-toggle-pay]").forEach(b=>b.addEventListener("click", async ()=>{
-    const s = STATE.sales.find(x=>x.id===b.dataset.togglePay);
-    s.paymentStatus = s.paymentStatus==="Paid" ? "Unpaid" : "Paid";
-    await saveState(); renderSalesLog(app);
-  }));
-  body.querySelectorAll("[data-toggle-del]").forEach(b=>b.addEventListener("click", async ()=>{
-    const s = STATE.sales.find(x=>x.id===b.dataset.toggleDel);
-    s.deliveryStatus = s.deliveryStatus==="Delivered" ? "Pending" : "Delivered";
-    await saveState(); renderSalesLog(app);
-  }));
   body.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click", async ()=>{
     if(!confirm("Delete this line item?")) return;
     STATE.sales = STATE.sales.filter(x=>x.id!==b.dataset.del);
