@@ -234,6 +234,7 @@
   .user-card .uc-head{display:flex;justify-content:space-between;align-items:center;}
   .user-card .uc-access{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <header class="top" id="app-header" style="display:none;">
@@ -489,6 +490,17 @@ function paidOrders(){
     });
   });
   return orders;
+}
+
+/* Delivery is tracked per order, not per sale line. This resolves what to
+   show for any given sale row: not yet meaningful until the whole order is
+   paid, then it's Pending/Delivered like everywhere else in the app. */
+function deliveryStatusForInvoice(no){
+  const rows = invoiceList().get(no) || [];
+  if(rows.length===0) return "—";
+  const allPaid = rows.every(r=>r.paymentStatus==="Paid");
+  if(!allPaid) return "Awaiting payment";
+  return STATE.delivery[no] || "Pending";
 }
 
 function renderTabs(){
@@ -1161,6 +1173,49 @@ function renderDelivery(app){
 }
 
 /* ============================= SALES LOG ============================= */
+function exportSalesLogExcel(rows){
+  if(!rows.length){ alert("Nothing to export for this filter."); return; }
+  const data = rows.map(s=>{
+    const {discountAmt, lineTotal} = lineCalc(s.qty, s.unitPrice, s.discountPct);
+    return {
+      "Invoice": s.invoiceNo,
+      "Date": s.date,
+      "Customer": s.customer,
+      "User ID": s.userId,
+      "Product": s.productName,
+      "Qty": s.qty,
+      "Unit Price": s.unitPrice,
+      "Discount %": s.discountPct,
+      "Discount Amount": Math.round(discountAmt*100)/100,
+      "Line Total": Math.round(lineTotal*100)/100,
+      "Payment Status": s.paymentStatus,
+      "Payment Method": s.paymentMethod || "",
+      "Delivery Status": deliveryStatusForInvoice(s.invoiceNo),
+      "Notes": s.notes || ""
+    };
+  });
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+  if(window.XLSX){
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sales Log");
+    XLSX.writeFile(wb, `eds-sales-log-${stamp}.xlsx`);
+  } else {
+    // Offline fallback: plain CSV, which Excel opens natively too.
+    const headers = Object.keys(data[0]);
+    const escCsv = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+    const csv = [headers.map(escCsv).join(",")]
+      .concat(data.map(row=>headers.map(h=>escCsv(row[h])).join(",")))
+      .join("\r\n");
+    const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `eds-sales-log-${stamp}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  }
+}
+
 let saleLogFilter = { status:"All", q:"" };
 function renderSalesLog(app){
   const rows = STATE.sales.filter(s=>{
@@ -1183,12 +1238,13 @@ function renderSalesLog(app){
             ${["All","Paid","Unpaid"].map(s=>`<option ${saleLogFilter.status===s?"selected":""}>${s}</option>`).join("")}
           </select>
         </div>
+        <button class="btn ghost" id="log-export" style="align-self:end;">Export to Excel</button>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr>
             <th>Invoice</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th>
-            <th class="num">Unit Price</th><th class="num">Line Total</th><th>Payment</th><th></th>
+            <th class="num">Unit Price</th><th class="num">Line Total</th><th>Payment</th><th>Method</th><th>Delivery</th><th></th>
           </tr></thead>
           <tbody id="log-body"></tbody>
         </table>
@@ -1197,10 +1253,12 @@ function renderSalesLog(app){
   `;
   const body = document.getElementById("log-body");
   if(rows.length===0){
-    body.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="glyph">📄</div>No sales match this filter.</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="glyph">📄</div>No sales match this filter.</div></td></tr>`;
   } else {
     body.innerHTML = rows.map(s=>{
       const {lineTotal} = lineCalc(s.qty,s.unitPrice,s.discountPct);
+      const delStatus = deliveryStatusForInvoice(s.invoiceNo);
+      const delBadge = delStatus==="Delivered" ? "ok" : (delStatus==="Pending" ? "warn" : "muted");
       return `<tr>
         <td class="mono">${escapeHtml(s.invoiceNo)}</td>
         <td class="mono">${escapeHtml(s.date)}</td>
@@ -1210,6 +1268,8 @@ function renderSalesLog(app){
         <td class="num">${fmtEGP(s.unitPrice)}</td>
         <td class="num">${fmtEGP(lineTotal)}</td>
         <td><span class="badge ${s.paymentStatus==='Paid'?'ok':'warn'}">${s.paymentStatus}</span></td>
+        <td>${escapeHtml(s.paymentMethod)||"—"}</td>
+        <td><span class="badge ${delBadge}">${escapeHtml(delStatus)}</span></td>
         <td><button class="btn danger-ghost sm" data-del="${s.id}">Delete</button></td>
       </tr>`;
     }).join("");
@@ -1217,6 +1277,7 @@ function renderSalesLog(app){
 
   document.getElementById("log-search").addEventListener("input", e=>{ saleLogFilter.q=e.target.value; renderSalesLog(app); });
   document.getElementById("log-status").addEventListener("change", e=>{ saleLogFilter.status=e.target.value; renderSalesLog(app); });
+  document.getElementById("log-export").addEventListener("click", ()=>exportSalesLogExcel(rows));
   body.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click", async ()=>{
     if(!confirm("Delete this line item?")) return;
     STATE.sales = STATE.sales.filter(x=>x.id!==b.dataset.del);
