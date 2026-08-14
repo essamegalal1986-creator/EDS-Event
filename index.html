@@ -386,6 +386,21 @@ function ensureStateDefaults(){
   if(!STATE.currentUserId || !STATE.users.find(u=>u.id===STATE.currentUserId)){
     STATE.currentUserId = STATE.users[0].id;
   }
+  pruneOrphanedDelivery();
+}
+
+/* A deleted order's invoice number can later get reused by a brand-new
+   order (nextInvoiceNo() just looks for the lowest free number). Without
+   this, a leftover "Delivered" flag from the old, deleted order would
+   silently attach itself to the new one. Delivery status only ever makes
+   sense for an invoice number that currently has real sale lines, so any
+   other key is stale and gets removed automatically on every load. */
+function pruneOrphanedDelivery(){
+  if(!STATE.delivery) { STATE.delivery = {}; return; }
+  const activeInvoices = new Set(STATE.sales.map(s=>s.invoiceNo));
+  Object.keys(STATE.delivery).forEach(no=>{
+    if(!activeInvoices.has(no)) delete STATE.delivery[no];
+  });
 }
 
 function storageAvailable(){
@@ -1423,6 +1438,7 @@ function renderSalesLog(app){
   body.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click", async ()=>{
     if(!confirm("Delete this line item?")) return;
     STATE.sales = STATE.sales.filter(x=>x.id!==b.dataset.del);
+    pruneOrphanedDelivery();
     await saveState(); renderSalesLog(app);
   }));
 }
