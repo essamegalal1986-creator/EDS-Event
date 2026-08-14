@@ -235,6 +235,8 @@
   .user-card .uc-access{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 <body>
 <header class="top" id="app-header" style="display:none;">
@@ -307,11 +309,69 @@ const STORAGE_KEY = "eds_console_state_v1";
 const ADMIN_ID = "admin";
 const DEFAULT_ADMIN_PASSWORD = "admin123";
 
-/* Persistence: plain browser localStorage — works on GitHub Pages / any static
-   host, no backend needed. Scoped per browser + device + origin, so it
-   survives reloads and redeploys of this same file as long as it's served
-   from the same URL. It does NOT sync between different browsers/devices —
-   use Backup & Restore (Users tab) to move data between them. */
+/* ============================================================
+   SHARED (TEAM) STORAGE — Firebase Realtime Database
+   ------------------------------------------------------------
+   Fill in your own free Firebase project's config below to make
+   every phone/laptop/browser see the same live data. Steps:
+     1. https://console.firebase.google.com → Add project (free).
+     2. Build → Realtime Database → Create Database → start in
+        "Test mode" (or set rules to {".read": true, ".write": true}
+        — this app has its own login screen, but Firebase itself
+        will be open to anyone with the config below, so don't
+        put anything truly sensitive in here).
+     3. Project settings (gear icon) → General → "Your apps" →
+        Web app (</> icon) → copy the firebaseConfig values below.
+     4. Re-upload this file. Everyone using the site will now
+        share one live dataset.
+   Until this is filled in, the app quietly falls back to
+   per-browser localStorage (old behavior — no cross-device sync).
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "PASTE_YOUR_PROJECT",
+};
+
+function firebaseConfigured(){
+  return !!(FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.apiKey).includes("PASTE_YOUR"));
+}
+
+let fbDb = null;
+let fbReady = false;
+let fbListenerAttached = false;
+let syncMode = "local"; // "local" | "cloud" | "cloud-error"
+
+function initFirebase(){
+  if(!firebaseConfigured() || typeof firebase === "undefined"){
+    syncMode = "local";
+    return;
+  }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    fbDb = firebase.database();
+    fbReady = true;
+    syncMode = "cloud";
+  }catch(e){
+    console.error("Firebase init failed", e);
+    fbReady = false;
+    syncMode = "cloud-error";
+  }
+}
+
+function ensureStateDefaults(){
+  if(!Array.isArray(STATE.products) || STATE.products.length === 0){
+    STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
+  }
+  if(!Array.isArray(STATE.users) || STATE.users.length === 0){
+    STATE.users = [{ id: ADMIN_ID, name: "Admin", password: DEFAULT_ADMIN_PASSWORD, access: TABS.map(t=>t.id) }];
+  }
+  if(!STATE.currentUserId || !STATE.users.find(u=>u.id===STATE.currentUserId)){
+    STATE.currentUserId = STATE.users[0].id;
+  }
+}
+
 function storageAvailable(){
   try{
     const t = "__eds_storage_test__";
@@ -321,7 +381,47 @@ function storageAvailable(){
   }catch(e){ return false; }
 }
 
+/* Applied whenever fresh data arrives from Firebase (initial load AND live
+   updates from teammates). Skips re-rendering mid-keystroke so a remote
+   update never yanks focus out from under someone who's typing. */
+function applyRemoteState(remote){
+  if(!remote || typeof remote !== "object") return;
+  STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},products:[],users:[],currentUserId:""}, remote);
+  ensureStateDefaults();
+  rebuildIndexes();
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }catch(e){}
+  if(!loaded){ loaded = true; }
+  const active = document.activeElement;
+  const isTyping = active && ["INPUT","TEXTAREA","SELECT"].includes(active.tagName);
+  if(!isTyping) render();
+}
+
 async function loadState(){
+  initFirebase();
+  if(fbReady){
+    try{
+      const snap = await fbDb.ref(STORAGE_KEY).once("value");
+      const remote = snap.val();
+      if(remote){
+        STATE = Object.assign(STATE, remote);
+      } else {
+        // nothing in the cloud yet — seed it from whatever's here (or defaults)
+      }
+      ensureStateDefaults();
+      rebuildIndexes();
+      loaded = true;
+      // live updates from every other browser/device from now on
+      if(!fbListenerAttached){
+        fbListenerAttached = true;
+        fbDb.ref(STORAGE_KEY).on("value", snap=>applyRemoteState(snap.val()));
+      }
+      return;
+    }catch(e){
+      console.error("Firebase load failed, falling back to local", e);
+      syncMode = "cloud-error";
+    }
+  }
+  // Fallback: local-only (no Firebase configured, or it failed to load)
   try{
     if(storageAvailable()){
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -333,15 +433,7 @@ async function loadState(){
       console.warn("localStorage is unavailable — data will not persist between visits.");
     }
   }catch(e){ console.error("Storage load error", e); }
-  if(!Array.isArray(STATE.products) || STATE.products.length === 0){
-    STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
-  }
-  if(!Array.isArray(STATE.users) || STATE.users.length === 0){
-    STATE.users = [{ id: ADMIN_ID, name: "Admin", password: DEFAULT_ADMIN_PASSWORD, access: TABS.map(t=>t.id) }];
-  }
-  if(!STATE.currentUserId || !STATE.users.find(u=>u.id===STATE.currentUserId)){
-    STATE.currentUserId = STATE.users[0].id;
-  }
+  ensureStateDefaults();
   rebuildIndexes();
   loaded = true;
 }
@@ -354,14 +446,21 @@ function hasAccess(tabId){
   return u.id===ADMIN_ID || (u.access||[]).includes(tabId);
 }
 async function saveState(){
-  try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE));
-    return true;
-  }catch(e){
-    console.error("Storage error", e);
-    showSaveError();
-    return false;
+  // Always keep a local cache so the app still works offline / as a fallback.
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }catch(e){ console.error("Local cache save error", e); }
+  if(fbReady){
+    try{
+      await fbDb.ref(STORAGE_KEY).set(STATE);
+      syncMode = "cloud";
+      return true;
+    }catch(e){
+      console.error("Firebase save error", e);
+      syncMode = "cloud-error";
+      showSaveError();
+      return false;
+    }
   }
+  return true;
 }
 
 let saveErrorShown = false;
@@ -369,7 +468,7 @@ function showSaveError(){
   if(saveErrorShown) return;
   saveErrorShown = true;
   const banner = document.createElement("div");
-  banner.textContent = "⚠ Couldn't save your last change in this browser (storage may be full, disabled, or in private mode). Download a backup from Users → Backup & Restore so nothing is lost.";
+  banner.textContent = "⚠ Couldn't sync your last change to the team database (offline, or Firebase rules block it). It's saved locally on this device — download a backup from Users → Backup & Restore to be safe.";
   banner.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#a83a2c;color:#fff;padding:10px 16px;text-align:center;font-size:13px;font-weight:600;z-index:9999;";
   document.body.appendChild(banner);
 }
@@ -534,7 +633,12 @@ function renderTabs(){
   }
 
   const actions = document.getElementById("header-actions");
-  actions.innerHTML = `<span style="font-size:12px;color:#bcd3cd;">${escapeHtml(currentUser().name)}</span><button class="btn ghost sm" id="logout-btn" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);color:#fff;">Log out</button>`;
+  const syncBadge = syncMode==="cloud"
+    ? `<span title="Live shared data — everyone sees the same info in real time" style="font-size:11px;background:rgba(60,122,76,.35);color:#dfeee2;padding:3px 8px;border-radius:99px;font-weight:700;">🟢 Team sync on</span>`
+    : syncMode==="cloud-error"
+      ? `<span title="Couldn't reach the team database — working from this device's local copy" style="font-size:11px;background:rgba(168,58,44,.35);color:#f4ded9;padding:3px 8px;border-radius:99px;font-weight:700;">🟠 Sync error — local only</span>`
+      : `<span title="No shared database configured — this device only" style="font-size:11px;background:rgba(255,255,255,.12);color:#bcd3cd;padding:3px 8px;border-radius:99px;font-weight:700;">💾 Local only</span>`;
+  actions.innerHTML = `${syncBadge}<span style="font-size:12px;color:#bcd3cd;">${escapeHtml(currentUser().name)}</span><button class="btn ghost sm" id="logout-btn" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);color:#fff;">Log out</button>`;
   document.getElementById("logout-btn").addEventListener("click", ()=>{
     authedUserId = null;
     render();
@@ -958,9 +1062,9 @@ function renderNewSale(app){
 
       <div class="card" style="max-width:340px;margin-left:auto;">
         <div class="idoc-totals" style="width:100%;margin:0;">
-          <div class="trow"><span>Subtotal</span><span class="mono">${fmtEGP(subtotal)}</span></div>
-          <div class="trow"><span>Total discount</span><span class="mono">−${fmtEGP(discount)}</span></div>
-          <div class="trow grand"><span>Grand total</span><span class="mono">${fmtEGP(grand)}</span></div>
+          <div class="trow"><span>Subtotal</span><span class="mono" id="totals-subtotal">${fmtEGP(subtotal)}</span></div>
+          <div class="trow"><span>Total discount</span><span class="mono" id="totals-discount">−${fmtEGP(discount)}</span></div>
+          <div class="trow grand"><span>Grand total</span><span class="mono" id="totals-grand">${fmtEGP(grand)}</span></div>
         </div>
       </div>
 
@@ -981,9 +1085,9 @@ function renderNewSale(app){
       <select class="li-product">${productOptions(l.productName)}</select>
       <input type="number" min="1" class="li-qty" value="${l.qty}">
       <input type="number" min="0" max="100" class="li-discount" value="${l.discountPct}">
-      <input type="text" class="mono" value="${fmtEGP(unitPrice)}" disabled>
-      <input type="text" class="mono" value="${fmtEGP(discountAmt)}" disabled>
-      <input type="text" class="mono" value="${fmtEGP(lineTotal)}" disabled>
+      <input type="text" class="mono li-unitprice" value="${fmtEGP(unitPrice)}" disabled>
+      <input type="text" class="mono li-discamt" value="${fmtEGP(discountAmt)}" disabled>
+      <input type="text" class="mono li-linetotal" value="${fmtEGP(lineTotal)}" disabled>
       <button class="remove-x" data-remove="${l.id}" title="Remove line">&times;</button>
     </div>`;
   }).join("");
@@ -993,14 +1097,36 @@ function renderNewSale(app){
   bind("f-invoiceNo","invoiceNo"); bind("f-date","date"); bind("f-customer","customer");
   bind("f-userId","userId"); bind("f-notes","notes");
 
+  function lineDerived(line){
+    const p = productByName[line.productName];
+    const unitPrice = p?p.price:0;
+    const {discountAmt, lineTotal} = lineCalc(line.qty, unitPrice, line.discountPct);
+    return {unitPrice, discountAmt, lineTotal};
+  }
+  function patchRow(row, line){
+    const {unitPrice, discountAmt, lineTotal} = lineDerived(line);
+    row.querySelector(".li-unitprice").value = fmtEGP(unitPrice);
+    row.querySelector(".li-discamt").value = fmtEGP(discountAmt);
+    row.querySelector(".li-linetotal").value = fmtEGP(lineTotal);
+  }
+  function patchTotals(){
+    const {subtotal, discount, grand} = invoiceSummary(f.lines.map(l=>{
+      const p = productByName[l.productName];
+      return {qty:l.qty, unitPrice:p?p.price:0, discountPct:l.discountPct};
+    }));
+    document.getElementById("totals-subtotal").textContent = fmtEGP(subtotal);
+    document.getElementById("totals-discount").textContent = "−" + fmtEGP(discount);
+    document.getElementById("totals-grand").textContent = fmtEGP(grand);
+  }
+
   document.getElementById("add-line").addEventListener("click", ()=>{ f.lines.push(freshLine()); render(); });
 
   rowsEl.querySelectorAll(".lineitem-row").forEach(row=>{
     const id = row.dataset.line;
     const line = f.lines.find(l=>l.id===id);
     row.querySelector(".li-product").addEventListener("change", e=>{ line.productName=e.target.value; render(); });
-    row.querySelector(".li-qty").addEventListener("input", e=>{ line.qty=e.target.value; render(); });
-    row.querySelector(".li-discount").addEventListener("input", e=>{ line.discountPct=e.target.value; render(); });
+    row.querySelector(".li-qty").addEventListener("input", e=>{ line.qty=e.target.value; patchRow(row,line); patchTotals(); });
+    row.querySelector(".li-discount").addEventListener("input", e=>{ line.discountPct=e.target.value; patchRow(row,line); patchTotals(); });
     const rm = row.querySelector("[data-remove]");
     if(rm) rm.addEventListener("click", ()=>{
       f.lines = f.lines.filter(l=>l.id!==id);
