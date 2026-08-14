@@ -195,7 +195,23 @@
     header.top, nav.tabs, .no-print{display:none !important;}
     body{background:#fff;}
     .invoice-doc{box-shadow:none;border:none;padding:0;}
+    body.printing-receipt #invoice-doc{display:none !important;}
+    body.printing-receipt #receipt-print-area{display:block !important;}
   }
+  /* Narrow receipt layout for thermal/label printers (e.g. Zebra continuous
+     labels ~75mm wide). Only shown while printing a receipt — see
+     body.printing-receipt above. The named @page below tells the browser's
+     print engine the physical page is 75mm wide with an open-ended (auto)
+     length, which matches a continuous label roll instead of A4/Letter. */
+  @page eds-receipt{ size: 75mm auto; margin: 3mm; }
+  #receipt-print-area{ display:none; page: eds-receipt; }
+  .receipt{ width:100%; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; }
+  .receipt .rline{ display:flex; justify-content:space-between; gap:8px; padding:1px 0; }
+  .receipt .rline > span:last-child{ text-align:right; white-space:nowrap; }
+  .receipt .rline-sub{ font-size:10px; color:#333; }
+  .receipt .r-center{ text-align:center; }
+  .receipt .r-bold{ font-weight:700; }
+  .receipt .r-dash{ border-top:1px dashed #000; margin:5px 0; }
 
   .user-switch-row{margin-top:12px;display:flex;align-items:center;gap:8px;}
   .user-switch-row label{font-size:11px;color:#bcd3cd;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
@@ -1480,6 +1496,44 @@ function invoiceDocMarkup(no, rows){
   `;
 }
 
+/* Compact receipt layout for narrow thermal/label printers (e.g. Zebra
+   continuous labels, ~75mm wide). Plain monospace, no colors, no wide
+   tables — everything stacks in one column so it actually fits. */
+function receiptMarkup(no, rows){
+  if(!rows || rows.length===0) return "";
+  const {subtotal, discount, grand} = invoiceSummary(rows);
+  const h = rows[0];
+  const items = rows.map(r=>{
+    const {lineTotal} = lineCalc(r.qty, r.unitPrice, r.discountPct);
+    return `
+      <div class="rline"><span>${escapeHtml(r.productName)}</span></div>
+      <div class="rline rline-sub"><span>${r.qty} x ${fmtEGP(r.unitPrice)}</span><span>${fmtEGP(lineTotal)}</span></div>
+    `;
+  }).join("");
+  return `
+    <div class="receipt">
+      <div class="r-center r-bold" style="font-size:13px;">EDS EVENT SALES</div>
+      <div class="r-center" style="font-size:9.5px;">Marketplace powered by DAF</div>
+      <div class="r-dash"></div>
+      <div class="rline"><span>Invoice</span><span>${escapeHtml(no)}</span></div>
+      <div class="rline"><span>Date</span><span>${escapeHtml(h.date)||"—"}</span></div>
+      <div class="rline"><span>Customer</span><span>${escapeHtml(h.customer)||"—"}</span></div>
+      <div class="rline"><span>User ID</span><span>${escapeHtml(h.userId)||"—"}</span></div>
+      <div class="r-dash"></div>
+      ${items}
+      <div class="r-dash"></div>
+      <div class="rline"><span>Subtotal</span><span>${fmtEGP(subtotal)}</span></div>
+      <div class="rline"><span>Discount</span><span>-${fmtEGP(discount)}</span></div>
+      <div class="rline r-bold" style="font-size:13px;"><span>TOTAL</span><span>${fmtEGP(grand)}</span></div>
+      <div class="r-dash"></div>
+      <div class="rline"><span>Payment</span><span>${escapeHtml(h.paymentStatus)}</span></div>
+      ${h.paymentMethod?`<div class="rline"><span>Method</span><span>${escapeHtml(h.paymentMethod)}</span></div>`:""}
+      ${h.notes?`<div class="r-center" style="margin-top:6px;font-size:9px;">${escapeHtml(h.notes)}</div>`:""}
+      <div class="r-center" style="margin-top:10px;font-size:9px;">Thank you!</div>
+    </div>
+  `;
+}
+
 function buildInvoiceStandaloneHTML(no, rows){
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>${escapeHtml(no)} — EDS Invoice</title>
@@ -1528,8 +1582,10 @@ function renderInvoices(app){
         <button class="btn ghost" id="open-invoice" style="align-self:end;" disabled>Open in browser</button>
         <button class="btn ghost" id="download-invoice" style="align-self:end;" disabled>Download (.html)</button>
         <button class="btn ghost" id="print-invoice" style="align-self:end;" disabled>Print</button>
+        <button class="btn ghost" id="print-receipt" style="align-self:end;" disabled title="Formatted narrow, for thermal/label printers like Zebra">Print receipt (label)</button>
       </div>
       <div id="invoice-doc"></div>
+      <div id="receipt-print-area"></div>
     </section>
   `;
   const sel = document.getElementById("invoice-select");
@@ -1537,6 +1593,7 @@ function renderInvoices(app){
   const openBtn = document.getElementById("open-invoice");
   const downloadBtn = document.getElementById("download-invoice");
   const printBtn = document.getElementById("print-invoice");
+  const printReceiptBtn = document.getElementById("print-receipt");
   let selectedNo = "";
 
   function populateSelect(preserve){
@@ -1557,7 +1614,7 @@ function renderInvoices(app){
   function draw(no){
     selectedNo = no;
     const enabled = !!(no && map.get(no) && map.get(no).length);
-    openBtn.disabled = !enabled; downloadBtn.disabled = !enabled; printBtn.disabled = !enabled;
+    openBtn.disabled = !enabled; downloadBtn.disabled = !enabled; printBtn.disabled = !enabled; printReceiptBtn.disabled = !enabled;
     if(!no){ target.innerHTML = `<div class="empty-state"><div class="glyph">🧾</div>Pick an invoice number above to view it.</div>`; return; }
     const rows = map.get(no) || [];
     if(rows.length===0){ target.innerHTML = `<div class="empty-state">No such invoice.</div>`; return; }
@@ -1569,6 +1626,13 @@ function renderInvoices(app){
   });
   sel.addEventListener("change", e=>draw(e.target.value));
   printBtn.addEventListener("click", ()=>window.print());
+  printReceiptBtn.addEventListener("click", ()=>{
+    if(!selectedNo) return;
+    const rows = map.get(selectedNo)||[];
+    document.getElementById("receipt-print-area").innerHTML = receiptMarkup(selectedNo, rows);
+    document.body.classList.add("printing-receipt");
+    window.print();
+  });
   downloadBtn.addEventListener("click", ()=>{
     if(!selectedNo) return;
     const html = buildInvoiceStandaloneHTML(selectedNo, map.get(selectedNo)||[]);
@@ -1782,6 +1846,10 @@ function renderUsers(app){
     e.target.value = "";
   });
 }
+
+window.addEventListener("afterprint", ()=>{
+  document.body.classList.remove("printing-receipt");
+});
 
 /* ============================= INIT ============================= */
 (async function init(){
