@@ -743,6 +743,10 @@ function userCanApprove(user){
   user = user || currentUser();
   return user.id === ADMIN_ID || !!user.canApprove;
 }
+function userCanEditPrice(user){
+  user = user || currentUser();
+  return user.id === ADMIN_ID || !!user.canEditPrice;
+}
 /* Everyone currently eligible to approve — checked live, so adding or
    removing approval rights affects orders still awaiting sign-off. */
 function requiredApprovers(){
@@ -1384,6 +1388,7 @@ function renderDashboard(app){
   const productAgg = {};
   const categoryAgg = {};
   const supplierAgg = {};
+  let totalCOGS = 0;
   filteredSales.filter(s=>s.paymentStatus==="Paid").forEach(s=>{
     explodeLineForAnalytics(s).forEach(item=>{
       if(!productAgg[item.name]) productAgg[item.name] = {qty:0, revenue:0};
@@ -1399,8 +1404,12 @@ function renderDashboard(app){
       if(!supplierAgg[sup]) supplierAgg[sup] = {qty:0, revenue:0};
       supplierAgg[sup].qty += item.qty;
       supplierAgg[sup].revenue += item.revenue;
+
+      totalCOGS += (cp && cp.cogs ? cp.cogs : 0) * item.qty;
     });
   });
+  const grossProfit = revenue - totalCOGS;
+  const grossMarginPct = revenue > 0 ? Math.round(100*grossProfit/revenue) : 0;
   const topProducts = Object.entries(productAgg).sort((a,b)=>b[1].revenue-a[1].revenue).slice(0,5);
   const categoryRows = Object.entries(categoryAgg).sort((a,b)=>b[1].revenue-a[1].revenue);
   const supplierRows = Object.entries(supplierAgg).sort((a,b)=>b[1].revenue-a[1].revenue);
@@ -1509,6 +1518,11 @@ function renderDashboard(app){
       <div class="grid cols-2" style="margin-top:14px;">
         <div class="card stat"><div class="label">Products Sold</div><div class="value">${distinctProductsSold}</div><div class="note">distinct products with a paid sale</div></div>
         <div class="card stat"><div class="label">Total Quantity Sold</div><div class="value">${totalQtySold}</div><div class="note">units across all paid orders</div></div>
+      </div>
+      <div class="grid cols-3" style="margin-top:14px;">
+        <div class="card stat"><div class="label">Revenue</div><div class="value">${fmtEGP(revenue)}</div><div class="note">paid orders, this range</div></div>
+        <div class="card stat"><div class="label">Total COGS</div><div class="value warn">${fmtEGP(totalCOGS)}</div><div class="note">cost of goods sold</div></div>
+        <div class="card stat"><div class="label">Gross Profit</div><div class="value" style="color:var(--ok);">${fmtEGP(grossProfit)}</div><div class="note">${grossMarginPct}% margin</div></div>
       </div>
     </section>
 
@@ -1684,7 +1698,7 @@ function renderDashboard(app){
 /* ============================= PRODUCTS ============================= */
 let newProductForm = null;
 let newBundleForm = null;
-function freshProductForm(){ return { name:"", price:"", opening:0, maxPerCustomer:"", category:"", supplier:"" }; }
+function freshProductForm(){ return { name:"", price:"", opening:0, maxPerCustomer:"", category:"", supplier:"", cogs:"" }; }
 function freshBundleComponentRow(){ return { rowId:uid(), productName:"", qty:0 }; }
 function freshBundleForm(){ return { name:"", price:"", maxPerCustomer:"", category:"", supplier:"", components:[freshBundleComponentRow()] }; }
 
@@ -1705,8 +1719,9 @@ function renderProducts(app){
           <div class="field"><label class="field-label">Name</label><input id="np-name" placeholder="Product name" value="${escapeHtml(newProductForm.name)}"></div>
           <div class="grid cols-2">
             <div class="field"><label class="field-label">Price (EGP)</label><input id="np-price" type="number" min="0" step="1" value="${escapeHtml(newProductForm.price)}"></div>
-            <div class="field"><label class="field-label">Opening stock</label><input id="np-opening" type="number" min="0" step="1" value="${escapeHtml(newProductForm.opening)}"></div>
+            <div class="field"><label class="field-label">COGS (EGP)</label><input id="np-cogs" type="number" min="0" step="0.01" placeholder="Cost per unit" value="${escapeHtml(newProductForm.cogs)}"></div>
           </div>
+          <div class="field"><label class="field-label">Opening stock</label><input id="np-opening" type="number" min="0" step="1" value="${escapeHtml(newProductForm.opening)}"></div>
           <div class="grid cols-2">
             <div class="field"><label class="field-label">Category</label>
               <select id="np-category">
@@ -1767,8 +1782,17 @@ function renderProducts(app){
         <h4>${escapeHtml(p.name)}</h4>
         <button class="remove-x" data-del-product="${escapeHtml(p.id)}" title="Remove" style="width:24px;height:24px;font-size:13px;flex:none;">&times;</button>
       </div>
-      <div class="price">${fmtEGP(p.price)}</div>
-      <div class="comp mono">${escapeHtml(p.id)}</div>
+      <div class="grid cols-2" style="margin-top:6px;gap:6px;">
+        <div class="field" style="margin-bottom:0;">
+          <label class="field-label">Price (EGP)</label>
+          <input type="number" min="0" step="1" data-edit-price="${escapeHtml(p.id)}" value="${p.price}" style="font-size:13px;font-weight:700;padding:6px 6px;">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label class="field-label">COGS (EGP)</label>
+          <input type="number" min="0" step="0.01" data-edit-cogs="${escapeHtml(p.id)}" value="${p.cogs||0}" style="font-size:13px;padding:6px 6px;">
+        </div>
+      </div>
+      <div class="comp mono">${escapeHtml(p.id)}${p.price>0?` · margin ${Math.round(100*(p.price-(p.cogs||0))/p.price)}%`:""}</div>
       <div class="grid cols-2" style="margin-top:8px;gap:6px;">
         <select data-edit-category="${escapeHtml(p.id)}" style="font-size:11.5px;padding:5px 6px;">
           <option value="">No category</option>
@@ -1790,7 +1814,10 @@ function renderProducts(app){
         <h4>${escapeHtml(p.name)} <span class="badge accent" style="margin-left:4px;">bundle</span></h4>
         <button class="remove-x" data-del-product="${escapeHtml(p.id)}" title="Remove" style="width:24px;height:24px;font-size:13px;flex:none;">&times;</button>
       </div>
-      <div class="price">${fmtEGP(p.price)}</div>
+      <div class="field" style="margin-top:6px;margin-bottom:0;">
+        <label class="field-label">Price (EGP)</label>
+        <input type="number" min="0" step="1" data-edit-price="${escapeHtml(p.id)}" value="${p.price}" style="font-size:13px;font-weight:700;padding:6px 6px;">
+      </div>
       <div class="comp">${p.components.map(c=>`${c.qty}&times; ${escapeHtml(c.name)}${c.qty===0?' <span class="badge muted" style="padding:1px 6px;">0 qty</span>':''}`).join("<br>")}</div>
       <div class="grid cols-2" style="margin-top:8px;gap:6px;">
         <select data-edit-category="${escapeHtml(p.id)}" style="font-size:11.5px;padding:5px 6px;">
@@ -1816,6 +1843,27 @@ function renderProducts(app){
     const prod = STATE.products.find(x=>x.id===e.target.dataset.editSupplier);
     if(prod){ prod.supplier = e.target.value; await saveState(); }
   }));
+  app.querySelectorAll("[data-edit-price]").forEach(inp=>inp.addEventListener("change", async e=>{
+    const prod = STATE.products.find(x=>x.id===e.target.dataset.editPrice);
+    if(prod){
+      const v = Math.max(0, Number(e.target.value)||0);
+      prod.price = v;
+      e.target.value = v;
+      rebuildIndexes();
+      await saveState();
+      renderProducts(app);
+    }
+  }));
+  app.querySelectorAll("[data-edit-cogs]").forEach(inp=>inp.addEventListener("change", async e=>{
+    const prod = STATE.products.find(x=>x.id===e.target.dataset.editCogs);
+    if(prod){
+      const v = Math.max(0, Number(e.target.value)||0);
+      prod.cogs = v;
+      e.target.value = v;
+      await saveState();
+      renderProducts(app);
+    }
+  }));
   app.querySelectorAll("[data-edit-max]").forEach(inp=>inp.addEventListener("change", async e=>{
     const prod = STATE.products.find(x=>x.id===e.target.dataset.editMax);
     if(prod){
@@ -1834,7 +1882,7 @@ function wireProductForms(app){
   const bindNP = (id,key,isNum)=>document.getElementById(id).addEventListener("input", e=>{
     newProductForm[key] = e.target.value;
   });
-  bindNP("np-name","name"); bindNP("np-price","price"); bindNP("np-opening","opening"); bindNP("np-max","maxPerCustomer");
+  bindNP("np-name","name"); bindNP("np-price","price"); bindNP("np-cogs","cogs"); bindNP("np-opening","opening"); bindNP("np-max","maxPerCustomer");
   document.getElementById("np-category").addEventListener("change", e=>{ newProductForm.category = e.target.value; });
   document.getElementById("np-supplier").addEventListener("change", e=>{ newProductForm.supplier = e.target.value; });
   document.getElementById("np-save").addEventListener("click", async ()=>{
@@ -1848,6 +1896,7 @@ function wireProductForms(app){
       opening: Number(newProductForm.opening)||0,
       maxPerCustomer: newProductForm.maxPerCustomer!=="" ? Number(newProductForm.maxPerCustomer) : null,
       category: newProductForm.category || "", supplier: newProductForm.supplier || "",
+      cogs: Number(newProductForm.cogs)||0,
       active:"Yes", components:[]
     });
     rebuildIndexes();
@@ -1927,7 +1976,7 @@ function wireProductForms(app){
 
 /* ============================= NEW SALE ============================= */
 let newSaleForm = null;
-function freshLine(){ return {id:uid(), productName:"", qty:1, discountPct:0}; }
+function freshLine(){ return {id:uid(), productName:"", qty:1, discountPct:0, priceOverride:null}; }
 function freshNewSale(){
   const ev = currentEvent();
   return {
@@ -2035,17 +2084,22 @@ function renderNewSale(app){
     </section>
   `;
 
+  const canEditPrice = userCanEditPrice();
   const rowsEl = document.getElementById("line-rows");
   rowsEl.innerHTML = f.lines.map(l=>{
     const p = productByName[l.productName];
-    const unitPrice = p?p.price:0;
+    const catalogPrice = p?p.price:0;
+    const unitPrice = l.priceOverride!=null ? l.priceOverride : catalogPrice;
     const {discountAmt, lineTotal} = lineCalc(l.qty, unitPrice, l.discountPct);
     return `
     <div class="lineitem-row" data-line="${l.id}">
       <select class="li-product">${productOptions(l.productName)}</select>
       <input type="number" min="1" class="li-qty" value="${l.qty}">
       <input type="number" min="0" max="100" class="li-discount" value="${l.discountPct}">
-      <input type="text" class="mono li-unitprice" value="${fmtEGP(unitPrice)}" disabled>
+      ${canEditPrice
+        ? `<input type="number" min="0" step="0.01" class="mono li-unitprice-edit" value="${unitPrice}" title="Override this line's price">`
+        : `<input type="text" class="mono li-unitprice" value="${fmtEGP(unitPrice)}" disabled>`
+      }
       <input type="text" class="mono li-discamt" value="${fmtEGP(discountAmt)}" disabled>
       <input type="text" class="mono li-linetotal" value="${fmtEGP(lineTotal)}" disabled>
       <button class="remove-x" data-remove="${l.id}" title="Remove line">&times;</button>
@@ -2137,13 +2191,16 @@ function renderNewSale(app){
 
   function lineDerived(line){
     const p = productByName[line.productName];
-    const unitPrice = p?p.price:0;
+    const catalogPrice = p?p.price:0;
+    const unitPrice = line.priceOverride!=null ? line.priceOverride : catalogPrice;
     const {discountAmt, lineTotal} = lineCalc(line.qty, unitPrice, line.discountPct);
     return {unitPrice, discountAmt, lineTotal};
   }
   function patchRow(row, line){
     const {unitPrice, discountAmt, lineTotal} = lineDerived(line);
-    row.querySelector(".li-unitprice").value = fmtEGP(unitPrice);
+    const priceEditEl = row.querySelector(".li-unitprice-edit");
+    if(priceEditEl){ if(document.activeElement!==priceEditEl) priceEditEl.value = unitPrice; }
+    else { const priceEl = row.querySelector(".li-unitprice"); if(priceEl) priceEl.value = fmtEGP(unitPrice); }
     row.querySelector(".li-discamt").value = fmtEGP(discountAmt);
     row.querySelector(".li-linetotal").value = fmtEGP(lineTotal);
     const p = productByName[line.productName];
@@ -2168,8 +2225,8 @@ function renderNewSale(app){
   }
   function patchTotals(){
     const {subtotal, discount, grand} = invoiceSummary(f.lines.map(l=>{
-      const p = productByName[l.productName];
-      return {qty:l.qty, unitPrice:p?p.price:0, discountPct:l.discountPct};
+      const {unitPrice} = lineDerived(l);
+      return {qty:l.qty, unitPrice, discountPct:l.discountPct};
     }));
     document.getElementById("totals-subtotal").textContent = fmtEGP(subtotal);
     document.getElementById("totals-discount").textContent = "−" + fmtEGP(discount);
@@ -2181,9 +2238,11 @@ function renderNewSale(app){
   rowsEl.querySelectorAll(".lineitem-row").forEach(row=>{
     const id = row.dataset.line;
     const line = f.lines.find(l=>l.id===id);
-    row.querySelector(".li-product").addEventListener("change", e=>{ line.productName=e.target.value; render(); });
+    row.querySelector(".li-product").addEventListener("change", e=>{ line.productName=e.target.value; line.priceOverride=null; render(); });
     row.querySelector(".li-qty").addEventListener("input", e=>{ line.qty=e.target.value; patchRow(row,line); patchTotals(); });
     row.querySelector(".li-discount").addEventListener("input", e=>{ line.discountPct=e.target.value; patchRow(row,line); patchTotals(); });
+    const priceEditEl = row.querySelector(".li-unitprice-edit");
+    if(priceEditEl) priceEditEl.addEventListener("input", e=>{ line.priceOverride=Number(e.target.value)||0; patchRow(row,line); patchTotals(); });
     const rm = row.querySelector("[data-remove]");
     if(rm) rm.addEventListener("click", ()=>{
       f.lines = f.lines.filter(l=>l.id!==id);
@@ -2250,7 +2309,7 @@ function renderNewSale(app){
         notes: f.notes,
         productName: l.productName,
         qty: Number(l.qty),
-        unitPrice: p.price,
+        unitPrice: (userCanEditPrice() && l.priceOverride!=null) ? l.priceOverride : p.price,
         discountPct: Number(l.discountPct)||0,
       });
     });
@@ -3852,7 +3911,7 @@ let editingAccessUserId = null;
 function freshUserForm(){
   const access = {};
   TABS.forEach(t=>access[t.id] = (t.id==="dashboard"||t.id==="orders")); // sensible default
-  return { name:"", password:"", access, canApprove:false };
+  return { name:"", password:"", access, canApprove:false, canEditPrice:false };
 }
 function renderUsers(app){
   if(!newUserForm) newUserForm = freshUserForm();
@@ -3875,9 +3934,13 @@ function renderUsers(app){
             <label><input type="checkbox" data-access="${t.id}" ${newUserForm.access[t.id]?"checked":""}> ${t.label}</label>
           `).join("")}
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;margin:10px 0 14px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;margin:10px 0 6px;">
           <input type="checkbox" id="nu-can-approve" ${newUserForm.canApprove?"checked":""} style="width:auto;">
           Can approve Manual Sales orders
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;margin:0 0 14px;">
+          <input type="checkbox" id="nu-can-edit-price" ${newUserForm.canEditPrice?"checked":""} style="width:auto;">
+          Can override product price on orders
         </label>
         <button class="btn primary" id="nu-save">Add user</button>
       </div>
@@ -3904,10 +3967,12 @@ function renderUsers(app){
           <strong>${escapeHtml(u.name)}</strong>
           ${u.id===ADMIN_ID?'<span class="badge tint" style="margin-left:6px;">full access</span>':''}
           ${u.id!==ADMIN_ID && u.canApprove ? '<span class="badge ok" style="margin-left:6px;">can approve</span>' : ''}
+          ${u.id!==ADMIN_ID && u.canEditPrice ? '<span class="badge accent" style="margin-left:6px;">can edit price</span>' : ''}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn ghost sm" data-set-password="${escapeHtml(u.id)}">Set password</button>
           ${u.id!==ADMIN_ID ? `<button class="btn ghost sm" data-toggle-approve="${escapeHtml(u.id)}">${u.canApprove?"Revoke approval rights":"Grant approval rights"}</button>` : ""}
+          ${u.id!==ADMIN_ID ? `<button class="btn ghost sm" data-toggle-editprice="${escapeHtml(u.id)}">${u.canEditPrice?"Revoke price edit":"Grant price edit"}</button>` : ""}
           ${u.id!==ADMIN_ID ? `<button class="btn ghost sm" data-edit-access="${escapeHtml(u.id)}">${editingAccessUserId===u.id?"Cancel":"Edit access"}</button>` : ""}
           ${u.id!==ADMIN_ID ? `<button class="btn danger-ghost sm" data-del-user="${escapeHtml(u.id)}">Delete</button>` : ""}
         </div>
@@ -3941,6 +4006,7 @@ function renderUsers(app){
     cb.addEventListener("change", e=>{ newUserForm.access[e.target.dataset.access] = e.target.checked; });
   });
   document.getElementById("nu-can-approve").addEventListener("change", e=>{ newUserForm.canApprove = e.target.checked; });
+  document.getElementById("nu-can-edit-price").addEventListener("change", e=>{ newUserForm.canEditPrice = e.target.checked; });
   document.getElementById("nu-save").addEventListener("click", async ()=>{
     const name = newUserForm.name.trim();
     const password = newUserForm.password;
@@ -3948,7 +4014,7 @@ function renderUsers(app){
     if(!password){ showAlert("Notice", "Set a password for this user."); return; }
     if(STATE.users.find(u=>u.name.trim().toLowerCase()===name.toLowerCase())){ showAlert("Notice", "A user with that name already exists."); return; }
     const access = Object.entries(newUserForm.access).filter(([,v])=>v).map(([k])=>k);
-    STATE.users.push({ id: uid(), name, password, access, canApprove: !!newUserForm.canApprove });
+    STATE.users.push({ id: uid(), name, password, access, canApprove: !!newUserForm.canApprove, canEditPrice: !!newUserForm.canEditPrice });
     await saveState();
     newUserForm = freshUserForm();
     renderUsers(app);
@@ -3957,6 +4023,13 @@ function renderUsers(app){
     const u = STATE.users.find(x=>x.id===b.dataset.toggleApprove);
     if(!u) return;
     u.canApprove = !u.canApprove;
+    await saveState();
+    renderUsers(app);
+  }));
+  document.querySelectorAll("[data-toggle-editprice]").forEach(b=>b.addEventListener("click", async ()=>{
+    const u = STATE.users.find(x=>x.id===b.dataset.toggleEditprice);
+    if(!u) return;
+    u.canEditPrice = !u.canEditPrice;
     await saveState();
     renderUsers(app);
   }));
