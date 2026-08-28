@@ -320,8 +320,8 @@
     header.top, nav.tabs, .no-print{display:none !important;}
     body{background:#fff;}
     .invoice-doc{box-shadow:none;border:none;padding:20px;}
-    /* Printing an invoice or receipt from ANY tab (Invoices, Payments, etc):
-       hide the whole app and show only the relevant global print area. */
+    /* Printing an invoice or receipt from any tab: hide the whole app and
+       show only the relevant hidden print area. */
     body.printing-invoice #app, body.printing-receipt #app{display:none !important;}
     body.printing-invoice #print-invoice-area{display:block !important;}
     body.printing-receipt #print-receipt-area{display:block !important;}
@@ -330,8 +330,7 @@
      labels ~75mm wide). Only shown while printing a receipt — see
      body.printing-receipt above. The named @page below tells the browser's
      print engine the physical page is 75mm wide with an open-ended (auto)
-     length, which matches a continuous label roll instead of A4/Letter —
-     margin stays 0 for the same header/footer-suppression reason above. */
+     length, matching a continuous label roll instead of A4/Letter. */
   @page eds-receipt{ size: 75mm auto; margin: 0; }
   #print-invoice-area{ display:none; }
   #print-receipt-area{ display:none; page: eds-receipt; }
@@ -469,6 +468,10 @@ let STATE = {
   universities: [], // list of university names, managed in Settings — used when a customer's role is "Student"
   events: [],       // {id, name, startDate, endDate} — managed in Settings; each order is tagged with one
   salesMembers: [], // list of sales member names, managed in Settings — chosen on Manual Sales orders
+  gifts: [],        // {id, type:"discount"|"item", name, discountPct} — managed on the Products page
+  subscriptions: {}, // userId -> {name, phone, role, university, date, giftId, giftName, claimed} — from the New Subscription page
+  milestones: [],    // {id, thresholdAmount, giftId} — a customer becomes eligible once their total paid spend crosses thresholdAmount
+  milestoneAwards: [], // {id, userId, milestoneId, giftId, date, redeemed, handedBy, handedDate} — one entry per spin-and-win, tracks how many times each customer has won a given milestone
   customers: {},    // userId -> {name, phone, role, university}  — imported from Excel or added manually; drives auto-fill in Orders
   overridePassword: "", // set in Settings — required to exceed a product's max qty/customer on an order
   users: [],        // {id, name, password, access:[tabId,...]}
@@ -542,6 +545,10 @@ function ensureStateDefaults(){
   if(!Array.isArray(STATE.universities)) STATE.universities = [];
   if(!Array.isArray(STATE.events)) STATE.events = [];
   if(!Array.isArray(STATE.salesMembers)) STATE.salesMembers = [];
+  if(!Array.isArray(STATE.gifts)) STATE.gifts = [];
+  if(!STATE.subscriptions || typeof STATE.subscriptions !== "object") STATE.subscriptions = {};
+  if(!Array.isArray(STATE.milestones)) STATE.milestones = [];
+  if(!Array.isArray(STATE.milestoneAwards)) STATE.milestoneAwards = [];
   if(!STATE.customers || typeof STATE.customers !== "object") STATE.customers = {};
   if(typeof STATE.overridePassword !== "string") STATE.overridePassword = "";
   if(!Array.isArray(STATE.users) || STATE.users.length === 0){
@@ -593,7 +600,7 @@ function storageAvailable(){
    update never yanks focus out from under someone who's typing. */
 function applyRemoteState(remote){
   if(!remote || typeof remote !== "object") return;
-  STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],customers:{},users:[],currentUserId:""}, remote);
+  STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],gifts:[],subscriptions:{},milestones:[],milestoneAwards:[],customers:{},users:[],currentUserId:""}, remote);
   ensureStateDefaults();
   rebuildIndexes();
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }catch(e){}
@@ -652,11 +659,50 @@ function hasAccess(tabId){
   const u = currentUser();
   return u.id===ADMIN_ID || (u.access||[]).includes(tabId);
 }
+/* Two people can use the app at the same moment on different devices —
+   Staff A creating an order while Staff B confirms a payment on a
+   different invoice. Since saveState() writes the WHOLE state blob, a
+   naive overwrite would let whichever save lands second silently erase
+   the other's brand-new record. This pulls in anything new from the
+   server immediately before saving, so concurrent additions from other
+   devices survive instead of getting wiped out. */
+function mergeRemoteIntoLocal(remote){
+  if(!remote || typeof remote !== "object") return;
+  if(Array.isArray(remote.sales)){
+    const localIds = new Set(STATE.sales.map(s=>s.id));
+    remote.sales.forEach(rs=>{ if(rs && rs.id!=null && !localIds.has(rs.id)) STATE.sales.push(rs); });
+  }
+  ["timing","delivery","paymentSplits","manualApprovals","subscriptions","customers"].forEach(key=>{
+    if(remote[key] && typeof remote[key]==="object" && !Array.isArray(remote[key])){
+      if(!STATE[key] || typeof STATE[key]!=="object") STATE[key] = {};
+      Object.keys(remote[key]).forEach(k=>{
+        if(!(k in STATE[key])) STATE[key][k] = remote[key][k];
+      });
+    }
+  });
+  ["categories","suppliers","universities","salesMembers"].forEach(key=>{
+    if(Array.isArray(remote[key]) && Array.isArray(STATE[key])){
+      const localSet = new Set(STATE[key]);
+      remote[key].forEach(item=>{ if(!localSet.has(item)) STATE[key].push(item); });
+    }
+  });
+  ["products","events","gifts","milestones","milestoneAwards","users"].forEach(key=>{
+    if(Array.isArray(remote[key]) && Array.isArray(STATE[key])){
+      const localIds = new Set(STATE[key].map(x=> (x && x.id!=null) ? x.id : JSON.stringify(x)));
+      remote[key].forEach(item=>{
+        const idKey = (item && item.id!=null) ? item.id : JSON.stringify(item);
+        if(!localIds.has(idKey)) STATE[key].push(item);
+      });
+    }
+  });
+}
 async function saveState(){
   // Always keep a local cache so the app still works offline / as a fallback.
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }catch(e){ console.error("Local cache save error", e); }
   if(fbReady){
     try{
+      const snap = await fbDb.ref(STORAGE_KEY).once("value");
+      mergeRemoteIntoLocal(snap.val());
       await fbDb.ref(STORAGE_KEY).set(STATE);
       syncMode = "cloud";
       return true;
@@ -668,6 +714,25 @@ async function saveState(){
     }
   }
   return true;
+}
+
+/* If two people open "New order" within the same moment on different
+   devices, both could generate the same "next" invoice number from their
+   own local copy of the data before either has saved — and once both
+   saves land, their unrelated orders would get merged together under one
+   invoice number. This pulls in the latest server data immediately before
+   the order is actually saved, and picks a fresh number if the one on
+   screen was just taken by someone else. */
+async function ensureUniqueInvoiceNo(desiredNo){
+  if(fbReady){
+    try{
+      const snap = await fbDb.ref(STORAGE_KEY).once("value");
+      const remote = snap.val();
+      if(remote) mergeRemoteIntoLocal(remote);
+    }catch(e){ /* fall through to the local check below */ }
+  }
+  if(!STATE.sales.some(s=>s.invoiceNo===desiredNo)) return desiredNo;
+  return nextInvoiceNo();
 }
 
 let saveErrorShown = false;
@@ -1008,6 +1073,22 @@ function showConfirm(title, message, confirmLabel){
     document.addEventListener("keydown", function esc(e){ if(e.key==="Escape"){ done(false); document.removeEventListener("keydown", esc); } });
   });
 }
+/* Every delete/remove action across the app goes through this instead of
+   showConfirm directly — same yes/no dialog, plus the override password
+   (Settings > Order limits) as a second gate against accidental data loss.
+   Falls back to plain confirm if no override password has been set yet,
+   so the app still works before that's configured. */
+async function confirmDelete(title, message, confirmLabel){
+  if(!(await showConfirm(title, message, confirmLabel || "Delete"))) return false;
+  if(!STATE.overridePassword) return true;
+  const pass = await showPasswordPrompt("Confirm with password", "Enter the override password to confirm this deletion:");
+  if(pass === null) return false;
+  if(pass !== STATE.overridePassword){
+    await showAlert("Incorrect password", "Not deleted.");
+    return false;
+  }
+  return true;
+}
 /* Pops up asking to pick one option from a dropdown — used to ask for the
    Sales Member the moment "Manual Sales" is chosen on an order. Resolves
    with the selected value, or null if cancelled. */
@@ -1047,6 +1128,8 @@ const TABS = [
   {id:"dashboard", label:"Dashboard"},
   {id:"products", label:"Products"},
   {id:"orders", label:"Orders"},
+  {id:"subscriptions", label:"New Subscription"},
+  {id:"milestones", label:"Milestone Gifts"},
   {id:"approvals", label:"Approvals"},
   {id:"manualorders", label:"Manual Orders"},
   {id:"payments", label:"Payments"},
@@ -1064,7 +1147,7 @@ const TABS = [
    never the bundle name. Components with qty 0 contribute nothing. ---- */
 function explodeLine(line){
   const p = productByName[line.productName];
-  if(!p) return [];
+  if(!p) return [{ name: line.productName, qty: Number(line.qty)||0 }]; // gift items and anything else outside the catalog pass through as-is, so they still show up for Delivery
   if(p.type === "Individual") return [{ name: line.productName, qty: Number(line.qty)||0 }];
   return p.components
     .map(c => ({ name: c.name, qty: (Number(c.qty)||0) * (Number(line.qty)||0) }))
@@ -1237,6 +1320,30 @@ function renderLogin(app){
   nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") passInput.focus(); });
 }
 
+/* Live-filter inputs call render*(app) on every keystroke to update the
+   list below them. Since that fully replaces the DOM, the input itself
+   gets destroyed and recreated each time — which drops keyboard focus, so
+   the user has to click back in after every single character. This saves
+   which element (by id) had focus and its cursor position beforehand, and
+   restores both right after the re-render, so typing multiple characters
+   in a row works normally. */
+function rerenderPreservingFocus(renderFn){
+  const active = document.activeElement;
+  const id = active && active.id;
+  const selStart = active && typeof active.selectionStart === "number" ? active.selectionStart : null;
+  const selEnd = active && typeof active.selectionEnd === "number" ? active.selectionEnd : null;
+  renderFn();
+  if(id){
+    const el = document.getElementById(id);
+    if(el){
+      el.focus();
+      if(selStart!=null && el.setSelectionRange){
+        try{ el.setSelectionRange(selStart, selEnd); }catch(e){}
+      }
+    }
+  }
+}
+
 function render(){
   const app = document.getElementById("app");
   if(!loaded){ document.getElementById("app-header").style.display="none"; app.innerHTML = `<div class="empty-state">Loading console…</div>`; return; }
@@ -1253,6 +1360,8 @@ function render(){
   if(activeTab==="dashboard") return renderDashboard(app);
   if(activeTab==="products") return renderProducts(app);
   if(activeTab==="orders") return renderNewSale(app);
+  if(activeTab==="subscriptions") return renderSubscriptions(app);
+  if(activeTab==="milestones") return renderMilestones(app);
   if(activeTab==="approvals") return renderApprovals(app);
   if(activeTab==="manualorders") return renderManualOrders(app);
   if(activeTab==="payments") return renderPayments(app);
@@ -1874,7 +1983,97 @@ function renderProducts(app){
     }
   }));
 
+  renderFreeGifts(app);
   wireProductForms(app);
+}
+
+/* Free gift management, shown at the bottom of the Products page. A gift
+   is either a % discount applied to the whole order, or a standalone free
+   item (like a mug or pen) that isn't part of the real product catalog —
+   so it never touches stock. */
+let newGiftForm = null;
+function freshGiftForm(){ return { type:"item", name:"", discountPct:"", productName:"" }; }
+function renderFreeGifts(app){
+  if(!newGiftForm) newGiftForm = freshGiftForm();
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
+    <section style="margin-top:30px;">
+      <h2 class="section-title">Free gifts</h2>
+      <p class="section-desc">Used on the New Subscription page. "Product" and "Discount" gifts show up as an eligibility banner on the Orders page. "Item" gifts (e.g. a mug or pen) aren't real products — they never appear in Orders at all, and are instead marked as handed over directly on the Subscriptions page.</p>
+      <div class="grid cols-2" style="align-items:start;">
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:13.5px;">Add a gift</h3>
+          <label class="field-label">Type</label>
+          <div class="pill-toggle" id="gift-type-toggle" style="margin-bottom:12px;">
+            <button data-gift-type="item" class="${newGiftForm.type==='item'?'active':''}">Free item</button>
+            <button data-gift-type="discount" class="${newGiftForm.type==='discount'?'active':''}">Discount</button>
+          </div>
+          ${newGiftForm.type==='discount' ? `
+            <div class="field"><label class="field-label">Product</label>
+              <select id="gift-product">
+                <option value="">Select a product…</option>
+                ${PRODUCTS.map(p=>`<option value="${escapeHtml(p.name)}" ${newGiftForm.productName===p.name?"selected":""}>${escapeHtml(p.name)}</option>`).join("")}
+              </select>
+            </div>
+          ` : `
+            <div class="field"><label class="field-label">Name</label><input id="gift-name" placeholder="e.g. Branded Mug" value="${escapeHtml(newGiftForm.name)}"></div>
+          `}
+          ${newGiftForm.type==='discount' ? `
+            <div class="field"><label class="field-label">Discount %</label><input id="gift-discount" type="number" min="1" max="100" value="${escapeHtml(newGiftForm.discountPct)}"></div>
+          ` : ""}
+          <button class="btn primary sm" id="gift-save">Add gift</button>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:13.5px;">All gifts</h3>
+          <div id="gift-list">
+            ${STATE.gifts.length ? STATE.gifts.map(g=>`
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line);">
+                <span>
+                  ${g.type==='discount' ? `<span class="badge accent">Discount</span>` : g.type==='product' ? `<span class="badge ok">Product</span>` : `<span class="badge tint">Item</span>`}
+                  ${escapeHtml(g.name)}
+                  ${g.type==='discount' ? `<span class="mono" style="color:var(--ink-soft);"> — ${g.discountPct}%</span>` : ""}
+                </span>
+                <button class="remove-x" data-del-gift="${escapeHtml(g.id)}" title="Remove" style="width:26px;height:26px;">&times;</button>
+              </div>
+            `).join("") : `<div class="empty-state"><div class="glyph">🎁</div>No gifts set up yet.</div>`}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+  app.appendChild(wrap.firstElementChild);
+
+  app.querySelectorAll("[data-gift-type]").forEach(b=>b.addEventListener("click", ()=>{
+    newGiftForm.type = b.dataset.giftType;
+    renderProducts(app);
+  }));
+  const giftNameEl = document.getElementById("gift-name");
+  if(giftNameEl) giftNameEl.addEventListener("input", e=>{ newGiftForm.name = e.target.value; });
+  const giftProductEl = document.getElementById("gift-product");
+  if(giftProductEl) giftProductEl.addEventListener("change", e=>{ newGiftForm.productName = e.target.value; });
+  const giftDiscountEl = document.getElementById("gift-discount");
+  if(giftDiscountEl) giftDiscountEl.addEventListener("input", e=>{ newGiftForm.discountPct = e.target.value; });
+  document.getElementById("gift-save").addEventListener("click", async ()=>{
+    if(newGiftForm.type==="discount"){
+      if(!newGiftForm.productName){ await showAlert("Notice", "Pick which product this discount applies to."); return; }
+      const pct = Number(newGiftForm.discountPct);
+      if(!pct || pct<1 || pct>100){ await showAlert("Notice", "Enter a discount percentage between 1 and 100."); return; }
+      STATE.gifts.push({ id: uid(), type:"discount", name: newGiftForm.productName, discountPct: pct });
+    } else {
+      const name = newGiftForm.name.trim();
+      if(!name){ await showAlert("Notice", "Give the gift a name."); return; }
+      STATE.gifts.push({ id: uid(), type:"item", name });
+    }
+    newGiftForm = freshGiftForm();
+    await saveState();
+    renderProducts(app);
+  });
+  app.querySelectorAll("[data-del-gift]").forEach(b=>b.addEventListener("click", async ()=>{
+    if(!(await confirmDelete("Remove gift", "Remove this gift? Existing subscriptions keep showing it, but it won't be selectable for new ones."))) return;
+    STATE.gifts = STATE.gifts.filter(x=>x.id!==b.dataset.delGift);
+    await saveState();
+    renderProducts(app);
+  }));
 }
 
 function wireProductForms(app){
@@ -1966,7 +2165,7 @@ function wireProductForms(app){
     const id = b.dataset.delProduct;
     const p = STATE.products.find(x=>x.id===id);
     if(!p) return;
-    if(!(await showConfirm("Remove product", `Remove "${p.name}" from the catalog? This won't change past orders, but it will disappear from new-order and bundle-builder pickers.`))) return;
+    if(!(await confirmDelete("Remove product", `Remove "${p.name}" from the catalog? This won't change past orders, but it will disappear from new-order and bundle-builder pickers.`))) return;
     STATE.products = STATE.products.filter(x=>x.id!==id);
     rebuildIndexes();
     await saveState();
@@ -1976,7 +2175,7 @@ function wireProductForms(app){
 
 /* ============================= NEW SALE ============================= */
 let newSaleForm = null;
-function freshLine(){ return {id:uid(), productName:"", qty:1, discountPct:0, priceOverride:null}; }
+function freshLine(){ return {id:uid(), productName:"", qty:1, discountPct:0, priceOverride:null, isGift:false, customPrice:null}; }
 function freshNewSale(){
   const ev = currentEvent();
   return {
@@ -1987,15 +2186,19 @@ function freshNewSale(){
     event: ev ? ev.name : "",
     salesMember: "",
     notes: "",
+    giftApplied: false,
+    redeemedAwardIds: [],
     lines: [freshLine()]
   };
 }
 
-function productOptions(selected){
+function productOptions(selected, isGiftItem){
   const groupInd = PRODUCTS.filter(p=>p.type==="Individual");
   const groupBun = PRODUCTS.filter(p=>p.type==="Bundle");
   const opt = (p)=>`<option value="${escapeHtml(p.name)}" ${p.name===selected?"selected":""}>${escapeHtml(p.name)} — ${fmtEGP(p.price)}</option>`;
+  const giftOpt = (isGiftItem && selected) ? `<option value="${escapeHtml(selected)}" selected>🎁 ${escapeHtml(selected)} (gift item)</option>` : "";
   return `<option value="">Select product…</option>
+    ${giftOpt}
     <optgroup label="Individual">${groupInd.map(opt).join("")}</optgroup>
     <optgroup label="Bundles">${groupBun.map(opt).join("")}</optgroup>`;
 }
@@ -2087,17 +2290,14 @@ function renderNewSale(app){
   const canEditPrice = userCanEditPrice();
   const rowsEl = document.getElementById("line-rows");
   rowsEl.innerHTML = f.lines.map(l=>{
-    const p = productByName[l.productName];
-    const catalogPrice = p?p.price:0;
-    const unitPrice = l.priceOverride!=null ? l.priceOverride : catalogPrice;
-    const {discountAmt, lineTotal} = lineCalc(l.qty, unitPrice, l.discountPct);
+    const {unitPrice, discountAmt, lineTotal} = lineDerived(l);
     return `
     <div class="lineitem-row" data-line="${l.id}">
-      <select class="li-product">${productOptions(l.productName)}</select>
+      <select class="li-product">${productOptions(l.productName, l.customPrice!=null)}</select>
       <input type="number" min="1" class="li-qty" value="${l.qty}">
       <input type="number" min="0" max="100" class="li-discount" value="${l.discountPct}">
-      ${canEditPrice
-        ? `<input type="number" min="0" step="0.01" class="mono li-unitprice-edit" value="${unitPrice}" title="Override this line's price">`
+      ${canEditPrice || l.customPrice!=null
+        ? `<input type="number" min="0" step="0.01" class="mono li-unitprice-edit" value="${unitPrice}" title="${l.customPrice!=null?'Gift item — no catalog price, set its value here':"Override this line's price"}">`
         : `<input type="text" class="mono li-unitprice" value="${fmtEGP(unitPrice)}" disabled>`
       }
       <input type="text" class="mono li-discamt" value="${fmtEGP(discountAmt)}" disabled>
@@ -2134,10 +2334,61 @@ function renderNewSale(app){
     const id = f.userId.trim();
     if(!id){ hintEl.innerHTML = ""; return; }
     const match = lookupCustomer(id);
+    const sub = lookupUnclaimedGift(id);
+    const subGift = resolveGiftForSub(sub);
+    const milestoneAwards = unredeemedMilestoneAwardsForUser(id).filter(a=>a.gift.type==="discount");
+
+    function giftBannerHtml(gift, key, applied){
+      // Only Discount-type gifts appear in Orders — Item (and any legacy
+      // Product-type) gifts are handled directly from their own page instead.
+      if(!gift || gift.type!=="discount") return "";
+      return `
+        <div class="gift-banner" data-gift-key="${escapeHtml(key)}" style="margin-top:6px;padding:8px;border:1px dashed var(--accent);border-radius:7px;background:var(--accent-tint);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="color:#7a4c17;font-weight:600;">🎁 Eligible for gift: ${escapeHtml(gift.name)}${gift.type==='discount'?` (${gift.discountPct}% off)`:''}</span>
+          <button class="btn primary sm" data-apply-gift="${escapeHtml(key)}" ${applied?"disabled":""}>${applied?"Added":(gift.type==='discount'?"Apply discount":"Add to order")}</button>
+        </div>
+      `;
+    }
+    function applyGiftToOrder(gift){
+      if(gift.type==="discount"){
+        const emptyLine = f.lines.find(l=>!l.productName);
+        const line = emptyLine || freshLine();
+        line.productName = gift.name;
+        line.qty = 1;
+        line.discountPct = gift.discountPct;
+        line.priceOverride = null;
+        line.isGift = true;
+        line.customPrice = null;
+        if(!emptyLine) f.lines.push(line);
+      }
+    }
+
+    let giftBanners = "";
+    if(sub && subGift) giftBanners += giftBannerHtml(subGift, "sub", !!f.giftApplied);
+    milestoneAwards.forEach(a=>{
+      giftBanners += giftBannerHtml(a.gift, `award:${a.id}`, (f.redeemedAwardIds||[]).includes(a.id));
+    });
+
     if(match){
       const roleText = match.role || "Other";
       const uniText = (roleText==="Student" && match.university) ? `, ${match.university}` : "";
-      hintEl.innerHTML = `<span style="color:var(--ok);">&#10003; ${escapeHtml(match.name)} — ${escapeHtml(roleText)}${escapeHtml(uniText)}</span>`;
+      hintEl.innerHTML = `<span style="color:var(--ok);">&#10003; ${escapeHtml(match.name)} — ${escapeHtml(roleText)}${escapeHtml(uniText)}</span>${giftBanners}`;
+      hintEl.querySelectorAll("[data-apply-gift]").forEach(btn=>btn.addEventListener("click", ()=>{
+        const key = btn.dataset.applyGift;
+        if(key==="sub"){
+          applyGiftToOrder(subGift);
+          f.giftApplied = true;
+        } else if(key.startsWith("award:")){
+          const awardId = key.slice("award:".length);
+          const a = milestoneAwards.find(x=>x.id===awardId);
+          if(a){
+            applyGiftToOrder(a.gift);
+            if(!f.redeemedAwardIds) f.redeemedAwardIds = [];
+            f.redeemedAwardIds.push(awardId);
+          }
+        }
+        render();
+      }));
       return;
     }
     hintEl.innerHTML = `
@@ -2191,7 +2442,7 @@ function renderNewSale(app){
 
   function lineDerived(line){
     const p = productByName[line.productName];
-    const catalogPrice = p?p.price:0;
+    const catalogPrice = line.customPrice!=null ? line.customPrice : (p?p.price:0);
     const unitPrice = line.priceOverride!=null ? line.priceOverride : catalogPrice;
     const {discountAmt, lineTotal} = lineCalc(line.qty, unitPrice, line.discountPct);
     return {unitPrice, discountAmt, lineTotal};
@@ -2238,7 +2489,7 @@ function renderNewSale(app){
   rowsEl.querySelectorAll(".lineitem-row").forEach(row=>{
     const id = row.dataset.line;
     const line = f.lines.find(l=>l.id===id);
-    row.querySelector(".li-product").addEventListener("change", e=>{ line.productName=e.target.value; line.priceOverride=null; render(); });
+    row.querySelector(".li-product").addEventListener("change", e=>{ line.productName=e.target.value; line.priceOverride=null; line.isGift=false; line.customPrice=null; render(); });
     row.querySelector(".li-qty").addEventListener("input", e=>{ line.qty=e.target.value; patchRow(row,line); patchTotals(); });
     row.querySelector(".li-discount").addEventListener("input", e=>{ line.discountPct=e.target.value; patchRow(row,line); patchTotals(); });
     const priceEditEl = row.querySelector(".li-unitprice-edit");
@@ -2254,7 +2505,11 @@ function renderNewSale(app){
 
   document.getElementById("reset-invoice").addEventListener("click", ()=>{ newSaleForm=freshNewSale(); render(); });
 
-  document.getElementById("save-invoice").addEventListener("click", async ()=>{
+  document.getElementById("save-invoice").addEventListener("click", async (e)=>{
+    const saveBtn = e.currentTarget;
+    if(saveBtn.disabled) return; // already mid-save — ignore extra clicks
+    saveBtn.disabled = true;
+    try{
     const validLines = f.lines.filter(l=>l.productName && Number(l.qty)>0);
     if(!f.invoiceNo || !f.customer || validLines.length===0){
       showAlert("Notice", "Please provide an invoice number, customer, and at least one product line.");
@@ -2265,6 +2520,7 @@ function renderNewSale(app){
       await showAlert("Sales member required", "Manual Sales orders need a sales member selected before they can be saved.");
       return;
     }
+    f.invoiceNo = await ensureUniqueInvoiceNo(f.invoiceNo);
     const qtyInThisOrderByProduct = {};
     validLines.forEach(l=>{ qtyInThisOrderByProduct[l.productName] = (qtyInThisOrderByProduct[l.productName]||0) + Number(l.qty); });
     const limitBreaches = [];
@@ -2293,9 +2549,10 @@ function renderNewSale(app){
         return;
       }
     }
+    const savedRows = [];
     validLines.forEach(l=>{
       const p = productByName[l.productName];
-      STATE.sales.push({
+      const row = {
         id: uid(),
         invoiceNo: f.invoiceNo,
         date: f.date || todayISO(),
@@ -2309,15 +2566,34 @@ function renderNewSale(app){
         notes: f.notes,
         productName: l.productName,
         qty: Number(l.qty),
-        unitPrice: (userCanEditPrice() && l.priceOverride!=null) ? l.priceOverride : p.price,
+        unitPrice: (userCanEditPrice() && l.priceOverride!=null) ? l.priceOverride : (l.customPrice!=null ? l.customPrice : (p?p.price:0)),
         discountPct: Number(l.discountPct)||0,
-      });
+      };
+      STATE.sales.push(row);
+      savedRows.push(row);
     });
     if(!isManualSales){
       if(!STATE.timing[f.invoiceNo]) STATE.timing[f.invoiceNo] = {};
       if(!STATE.timing[f.invoiceNo].createdAt) STATE.timing[f.invoiceNo].createdAt = Date.now();
     } else {
       STATE.manualApprovals[f.invoiceNo] = { approvedBy: [], rejectedBy: null };
+    }
+    // Nothing to actually collect (e.g. an order made entirely of free gift
+    // lines) — skip Payments entirely and send it straight to Delivery.
+    if(!isManualSales){
+      const {grand} = invoiceSummary(savedRows);
+      if(Math.abs(grand) < 0.01){
+        savedRows.forEach(r=>{ r.paymentStatus = "Paid"; r.paymentMethod = "Free (Gift)"; });
+        STATE.timing[f.invoiceNo].paidAt = STATE.timing[f.invoiceNo].createdAt;
+      }
+    }
+    if(f.giftApplied){
+      const key = f.userId.trim();
+      const subRec = STATE.subscriptions[key] || STATE.subscriptions[key.toLowerCase()];
+      if(subRec) subRec.claimed = true;
+    }
+    if(f.redeemedAwardIds && f.redeemedAwardIds.length){
+      f.redeemedAwardIds.forEach(awardId=>markMilestoneAwardRedeemed(awardId));
     }
     await saveState();
     const savedNo = f.invoiceNo;
@@ -2332,7 +2608,387 @@ function renderNewSale(app){
       activeTab = "payments";
       render();
     }
+    } finally {
+      saveBtn.disabled = false; // harmless no-op if render() already replaced this button
+    }
   });
+}
+
+/* ============================= SUBSCRIPTIONS ============================= */
+let newSubForm = null;
+function freshSubForm(){ return { userId:"", name:"", phone:"", role:"Other", university:"", giftId:"" }; }
+function renderSubscriptions(app){
+  if(!newSubForm) newSubForm = freshSubForm();
+  const subs = Object.entries(STATE.subscriptions).sort((a,b)=> (b[1].date||"").localeCompare(a[1].date||""));
+
+  app.innerHTML = `
+    <section style="margin-bottom:26px;">
+      <h2 class="section-title">New Subscription</h2>
+      <p class="section-desc">Sign up a customer and pick their free gift. This also adds them straight to the Customer Directory. Once saved, entering their User ID on the Orders page will show they're eligible for that gift — one time only.</p>
+      <div class="card" style="max-width:560px;">
+        <div class="grid cols-2">
+          <div class="field"><label class="field-label">User ID</label><input id="sub-userid" placeholder="e.g. u-104" value="${escapeHtml(newSubForm.userId)}"></div>
+          <div class="field"><label class="field-label">Name</label><input id="sub-name" placeholder="Customer name" value="${escapeHtml(newSubForm.name)}"></div>
+        </div>
+        <div class="grid cols-2">
+          <div class="field"><label class="field-label">Phone (optional)</label><input id="sub-phone" placeholder="Phone number" value="${escapeHtml(newSubForm.phone)}"></div>
+          <div class="field"><label class="field-label">Type</label>
+            <select id="sub-role">
+              ${CUSTOMER_ROLES.map(r=>`<option value="${r}" ${newSubForm.role===r?"selected":""}>${r}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        ${newSubForm.role==="Student" ? `
+          <div class="field"><label class="field-label">University</label>
+            <select id="sub-university">
+              <option value="">${STATE.universities.length?"Select university…":"Add universities in Settings"}</option>
+              ${STATE.universities.map(u=>`<option value="${escapeHtml(u)}" ${newSubForm.university===u?"selected":""}>${escapeHtml(u)}</option>`).join("")}
+            </select>
+          </div>
+        ` : ""}
+        <div class="field"><label class="field-label">Gift</label>
+          <select id="sub-gift">
+            <option value="">${STATE.gifts.length?"Select a gift…":"Add gifts on the Products page first"}</option>
+            ${STATE.gifts.map(g=>`<option value="${escapeHtml(g.id)}" ${newSubForm.giftId===g.id?"selected":""}>${g.type==='discount'?`${escapeHtml(g.name)} (${g.discountPct}% off)`:escapeHtml(g.name)}</option>`).join("")}
+          </select>
+        </div>
+        <button class="btn primary" id="sub-save">Save subscription</button>
+      </div>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+        <h2 class="section-title" style="margin:0;">All subscriptions</h2>
+        <button class="btn ghost sm" id="sub-export" ${subs.length===0?"disabled":""}>Export to Excel</button>
+      </div>
+      <p class="section-desc">Includes whether each person was a brand-new customer or already existed when they subscribed. Item gifts are handed over directly here, not through Orders.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User ID</th><th>Name</th><th>Type</th><th>Gift</th><th>Customer</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+          ${subs.length ? subs.map(([userId,s])=>{
+            const gift = resolveGiftForSub(s);
+            const isItemGift = gift && gift.type!=="discount";
+            let statusCell;
+            if(s.claimed){
+              statusCell = isItemGift
+                ? `<span class="badge muted">Handed over${s.handedBy?` by ${escapeHtml(s.handedBy)}`:""}</span>`
+                : `<span class="badge muted">Claimed</span>`;
+            } else {
+              statusCell = `<span class="badge ok">Available</span>`;
+            }
+            return `
+            <tr>
+              <td class="mono">${escapeHtml(userId)}</td>
+              <td>${escapeHtml(s.name)}</td>
+              <td><span class="badge ${s.role==='Doctor'?'tint':s.role==='Student'?'accent':s.role==='Store'?'ok':'muted'}">${escapeHtml(s.role||"Other")}</span></td>
+              <td>${escapeHtml(s.giftName||"—")}${gift?` <span class="badge ${gift.type==='item'?'tint':gift.type==='product'?'ok':'accent'}" style="margin-left:4px;">${gift.type}</span>`:""}</td>
+              <td><span class="badge ${s.isNewUser?'ok':'muted'}">${s.isNewUser?"New user":"Old user"}</span></td>
+              <td>${statusCell}</td>
+              <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                ${isItemGift && !s.claimed ? `<button class="btn primary sm" data-hand-gift="${escapeHtml(userId)}">Mark as handed over</button>` : ""}
+                <button class="btn danger-ghost sm" data-del-sub="${escapeHtml(userId)}">Delete</button>
+              </td>
+            </tr>`;
+          }).join("") : `<tr><td colspan="7"><div class="empty-state"><div class="glyph">🎁</div>No subscriptions yet.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+
+  document.getElementById("sub-userid").addEventListener("input", e=>{ newSubForm.userId = e.target.value; });
+  document.getElementById("sub-name").addEventListener("input", e=>{ newSubForm.name = e.target.value; });
+  document.getElementById("sub-phone").addEventListener("input", e=>{ newSubForm.phone = e.target.value; });
+  document.getElementById("sub-role").addEventListener("change", e=>{
+    newSubForm.role = e.target.value;
+    if(newSubForm.role!=="Student") newSubForm.university = "";
+    renderSubscriptions(app);
+  });
+  const subUni = document.getElementById("sub-university");
+  if(subUni) subUni.addEventListener("change", e=>{ newSubForm.university = e.target.value; });
+  document.getElementById("sub-gift").addEventListener("change", e=>{ newSubForm.giftId = e.target.value; });
+  document.getElementById("sub-save").addEventListener("click", async ()=>{
+    const userId = newSubForm.userId.trim();
+    const name = newSubForm.name.trim();
+    if(!userId || !name){ await showAlert("Missing details", "User ID and Name are both required."); return; }
+    if(STATE.subscriptions[userId]){ await showAlert("Already subscribed", `"${userId}" already has a subscription and can only be eligible for one gift, ever. Delete the existing subscription first if you need to change it.`); return; }
+    if(!newSubForm.giftId){ await showAlert("Pick a gift", "Choose a gift for this subscription."); return; }
+    const gift = STATE.gifts.find(g=>g.id===newSubForm.giftId);
+    if(!gift){ await showAlert("Notice", "That gift no longer exists — pick another."); return; }
+    const phone = newSubForm.phone.trim();
+    const role = newSubForm.role || "Other";
+    const university = role==="Student" ? (newSubForm.university||"") : "";
+    // A customer is "new" if they had no directory entry and no prior orders before this subscription.
+    const isNewUser = !STATE.customers[userId] && !STATE.sales.some(s=>(s.userId||"").trim()===userId);
+    // Keep the shared Customer Directory in sync too, so Orders auto-fill still works.
+    STATE.customers[userId] = { name, phone, role, university };
+    STATE.subscriptions[userId] = { name, phone, role, university, date: todayISO(), giftId: gift.id, giftName: gift.name, claimed:false, isNewUser };
+    newSubForm = freshSubForm();
+    await saveState();
+    await showAlert("Subscription saved", `${name} is now eligible for a gift. It'll show up automatically the next time their User ID is entered on the Orders page.`);
+    renderSubscriptions(app);
+  });
+  app.querySelectorAll("[data-del-sub]").forEach(b=>b.addEventListener("click", async ()=>{
+    if(!(await confirmDelete("Remove subscription", `Remove the subscription for "${b.dataset.delSub}"?`))) return;
+    delete STATE.subscriptions[b.dataset.delSub];
+    await saveState();
+    renderSubscriptions(app);
+  }));
+  app.querySelectorAll("[data-hand-gift]").forEach(b=>b.addEventListener("click", async ()=>{
+    const userId = b.dataset.handGift;
+    const s = STATE.subscriptions[userId];
+    if(!s) return;
+    if(!(await showConfirm("Hand over gift", `Confirm "${s.giftName}" has been physically handed to ${s.name}?`, "Confirm"))) return;
+    s.claimed = true;
+    s.handedBy = currentUser().name;
+    s.handedDate = todayISO();
+    await saveState();
+    renderSubscriptions(app);
+  }));
+  const exportBtn = document.getElementById("sub-export");
+  if(exportBtn) exportBtn.addEventListener("click", ()=>exportSubscriptionsExcel(subs));
+}
+function exportSubscriptionsExcel(subs){
+  if(!subs.length){ showAlert("Notice", "No subscriptions to export."); return; }
+  const data = subs.map(([userId,s])=>{
+    const gift = resolveGiftForSub(s);
+    return {
+      "User ID": userId,
+      "Name": s.name,
+      "Phone": s.phone||"",
+      "Type": s.role||"Other",
+      "University": s.university||"",
+      "Gift": s.giftName||"",
+      "Gift Type": gift ? gift.type : "",
+      "Customer Status": s.isNewUser ? "New user" : "Old user",
+      "Gift Status": s.claimed ? (gift && gift.type!=="discount" ? "Handed over" : "Claimed") : "Available",
+      "Handed Over By": s.handedBy||"",
+      "Handed Over Date": s.handedDate||"",
+      "Subscribed Date": s.date||"",
+    };
+  });
+  try{
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Subscriptions");
+    XLSX.writeFile(wb, `eds-subscriptions-${todayISO()}.xlsx`);
+  }catch(err){
+    showAlert("Export failed", "Couldn't build the Excel file — check your internet connection and try again.");
+  }
+}
+
+/* ============================= MILESTONE GIFTS ============================= */
+let newMilestoneForm = null;
+function freshMilestoneForm(){ return { thresholdAmount:"", maxWins:"1" }; }
+function allCustomerUserIds(){
+  const ids = new Set();
+  STATE.sales.forEach(s=>{ if(s.userId && s.userId.trim()) ids.add(s.userId.trim()); });
+  Object.keys(STATE.customers).forEach(id=>ids.add(id));
+  return [...ids];
+}
+let pickedGiftBySlot = {}; // "userId|milestoneId" -> giftId, remembers the dropdown choice between re-renders
+let milestoneFilterUserId = "";
+function renderMilestones(app){
+  if(!newMilestoneForm) newMilestoneForm = freshMilestoneForm();
+  const filterKey = milestoneFilterUserId.trim().toLowerCase();
+  let eligibleRows = eligibleMilestoneSlots();
+  if(filterKey) eligibleRows = eligibleRows.filter(r=>r.userId.toLowerCase().includes(filterKey));
+
+  let historyRows = STATE.milestoneAwards
+    .map(a=>({ ...a, gift: STATE.gifts.find(g=>g.id===a.giftId), milestone: STATE.milestones.find(m=>m.id===a.milestoneId) }))
+    .sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  if(filterKey) historyRows = historyRows.filter(a=>a.userId.toLowerCase().includes(filterKey));
+
+  app.innerHTML = `
+    <section style="margin-bottom:26px;">
+      <h2 class="section-title">Milestone Gifts</h2>
+      <p class="section-desc">Spin-and-win style: a customer becomes eligible once their total paid spend crosses a threshold, up to a set number of times (once, twice, or however many you allow). Once they spin the wheel, come back here and pick whatever gift they actually won from the dropdown next to their name.</p>
+      <div class="grid cols-2" style="align-items:start;">
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:13.5px;">Add a milestone</h3>
+          <div class="field"><label class="field-label">Spend threshold (EGP)</label><input id="ms-threshold" type="number" min="1" step="1" placeholder="e.g. 5000" value="${escapeHtml(newMilestoneForm.thresholdAmount)}"></div>
+          <div class="field"><label class="field-label">How many times can a customer win this?</label>
+            <select id="ms-maxwins">
+              <option value="1" ${newMilestoneForm.maxWins==='1'?'selected':''}>Once</option>
+              <option value="2" ${newMilestoneForm.maxWins==='2'?'selected':''}>2 times</option>
+              <option value="3" ${newMilestoneForm.maxWins==='3'?'selected':''}>3 times</option>
+            </select>
+          </div>
+          <button class="btn primary sm" id="ms-save">Add milestone</button>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 12px;font-size:13.5px;">All milestones</h3>
+          <div id="ms-list">
+            ${STATE.milestones.length ? STATE.milestones.slice().sort((a,b)=>a.thresholdAmount-b.thresholdAmount).map(m=>`
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line);">
+                <span>
+                  <span class="mono" style="font-weight:700;">${fmtEGP(m.thresholdAmount)}+</span>
+                  <span class="badge tint" style="margin-left:4px;">${m.maxWins||1}&times; win${(m.maxWins||1)===1?"":"s"}</span>
+                </span>
+                <button class="remove-x" data-del-milestone="${escapeHtml(m.id)}" title="Remove" style="width:26px;height:26px;">&times;</button>
+              </div>
+            `).join("") : `<div class="empty-state"><div class="glyph">🏆</div>No milestones set up yet.</div>`}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+        <h2 class="section-title" style="margin:0;">Eligible customers</h2>
+        <div class="field" style="margin-bottom:0;min-width:200px;"><label class="field-label">Filter by User ID</label><input id="ms-filter-userid" placeholder="e.g. u-104" value="${escapeHtml(milestoneFilterUserId)}"></div>
+      </div>
+      <p class="section-desc">Everyone who's crossed a threshold and still has spins left. Pick the gift they actually won and assign it.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User ID</th><th>Name</th><th class="num">Total Spend</th><th>Milestone</th><th>Spins left</th><th>Gift won</th><th></th></tr></thead>
+          <tbody>
+          ${eligibleRows.length ? eligibleRows.map(r=>{
+            const slotKey = `${r.userId}|${r.milestone.id}`;
+            return `
+            <tr>
+              <td class="mono">${escapeHtml(r.userId)}</td>
+              <td>${escapeHtml(r.name)}</td>
+              <td class="num mono">${fmtEGP(r.spend)}</td>
+              <td class="mono">${fmtEGP(r.milestone.thresholdAmount)}+</td>
+              <td>${r.remaining} of ${r.milestone.maxWins||1}</td>
+              <td>
+                <select data-slot-gift="${escapeHtml(slotKey)}" style="font-size:12.5px;padding:5px 6px;">
+                  <option value="">${STATE.gifts.length?"Select a gift…":"Add gifts on the Products page first"}</option>
+                  ${STATE.gifts.map(g=>`<option value="${escapeHtml(g.id)}" ${pickedGiftBySlot[slotKey]===g.id?"selected":""}>${g.type==='discount'?`${escapeHtml(g.name)} (${g.discountPct}% off)`:escapeHtml(g.name)} — ${g.type}</option>`).join("")}
+                </select>
+              </td>
+              <td><button class="btn primary sm" data-assign-gift="${escapeHtml(slotKey)}">Assign</button></td>
+            </tr>`;
+          }).join("") : `<tr><td colspan="7"><div class="empty-state"><div class="glyph">✅</div>No customers currently eligible${filterKey?" matching that filter":""}.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style="margin-top:26px;">
+      <h2 class="section-title">Pending item hand-overs</h2>
+      <p class="section-desc">Awarded "Item" gifts (like a mug or pen) aren't handled through Orders — mark them off here once physically given to the customer.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User ID</th><th>Gift</th><th>Awarded</th><th></th></tr></thead>
+          <tbody>
+          ${(() => {
+            let pending = STATE.milestoneAwards
+              .filter(a=>!a.redeemed)
+              .map(a=>({...a, gift: STATE.gifts.find(g=>g.id===a.giftId)}))
+              .filter(a=>a.gift && a.gift.type!=="discount");
+            if(filterKey) pending = pending.filter(a=>a.userId.toLowerCase().includes(filterKey));
+            return pending.length ? pending.map(a=>`
+              <tr>
+                <td class="mono">${escapeHtml(a.userId)}</td>
+                <td>${escapeHtml(a.gift.name)} <span class="badge tint">item</span></td>
+                <td>${escapeHtml(a.date||"")}</td>
+                <td><button class="btn primary sm" data-hand-award="${escapeHtml(a.id)}">Mark as handed over</button></td>
+              </tr>
+            `).join("") : `<tr><td colspan="4"><div class="empty-state"><div class="glyph">🎁</div>Nothing pending hand-over.</div></td></tr>`;
+          })()}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style="margin-top:26px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+        <h2 class="section-title" style="margin:0;">Award history</h2>
+        <button class="btn ghost sm" id="ms-export" ${historyRows.length===0?"disabled":""}>Export to Excel</button>
+      </div>
+      <p class="section-desc">Every gift ever won, redeemed or not${filterKey?` for User ID matching "${escapeHtml(milestoneFilterUserId)}"`:""}.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>User ID</th><th>Milestone</th><th>Gift</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>
+          ${historyRows.length ? historyRows.map(a=>`
+            <tr>
+              <td class="mono">${escapeHtml(a.userId)}</td>
+              <td class="mono">${a.milestone?fmtEGP(a.milestone.thresholdAmount)+"+":"(deleted)"}</td>
+              <td>${a.gift?escapeHtml(a.gift.name):"(deleted gift)"} ${a.gift?`<span class="badge ${a.gift.type==='discount'?'accent':'tint'}">${a.gift.type}</span>`:""}</td>
+              <td>${escapeHtml(a.date||"")}</td>
+              <td>${a.redeemed ? (a.handedBy?`<span class="badge muted">Handed over by ${escapeHtml(a.handedBy)}</span>`:`<span class="badge muted">Redeemed</span>`) : `<span class="badge ok">Pending</span>`}</td>
+            </tr>
+          `).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">📋</div>No awards yet${filterKey?" for that filter":""}.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+
+  document.getElementById("ms-filter-userid").addEventListener("input", e=>{ milestoneFilterUserId = e.target.value; rerenderPreservingFocus(()=>renderMilestones(app)); });
+  document.getElementById("ms-threshold").addEventListener("input", e=>{ newMilestoneForm.thresholdAmount = e.target.value; });
+  document.getElementById("ms-maxwins").addEventListener("change", e=>{ newMilestoneForm.maxWins = e.target.value; });
+  document.getElementById("ms-save").addEventListener("click", async ()=>{
+    const threshold = Number(newMilestoneForm.thresholdAmount);
+    if(!threshold || threshold<=0){ await showAlert("Notice", "Enter a spend threshold greater than 0."); return; }
+    STATE.milestones.push({ id: uid(), thresholdAmount: threshold, maxWins: Number(newMilestoneForm.maxWins)||1 });
+    newMilestoneForm = freshMilestoneForm();
+    await saveState();
+    renderMilestones(app);
+  });
+  app.querySelectorAll("[data-del-milestone]").forEach(b=>b.addEventListener("click", async ()=>{
+    if(!(await confirmDelete("Remove milestone", "Remove this milestone? Customers who already won from it keep their record."))) return;
+    STATE.milestones = STATE.milestones.filter(x=>x.id!==b.dataset.delMilestone);
+    await saveState();
+    renderMilestones(app);
+  }));
+  app.querySelectorAll("[data-slot-gift]").forEach(sel=>sel.addEventListener("change", e=>{
+    pickedGiftBySlot[e.target.dataset.slotGift] = e.target.value;
+  }));
+  app.querySelectorAll("[data-assign-gift]").forEach(b=>b.addEventListener("click", async ()=>{
+    const slotKey = b.dataset.assignGift;
+    const [userId, milestoneId] = slotKey.split("|");
+    const giftId = pickedGiftBySlot[slotKey];
+    if(!giftId){ await showAlert("Pick a gift first", "Select which gift this customer won before assigning it."); return; }
+    const gift = STATE.gifts.find(g=>g.id===giftId);
+    if(!(await showConfirm("Assign gift", `Give "${gift?gift.name:""}" to ${userId} for this milestone?`, "Assign"))) return;
+    recordMilestoneAward(userId, milestoneId, giftId);
+    delete pickedGiftBySlot[slotKey];
+    await saveState();
+    renderMilestones(app);
+  }));
+  app.querySelectorAll("[data-hand-award]").forEach(b=>b.addEventListener("click", async ()=>{
+    const award = STATE.milestoneAwards.find(x=>x.id===b.dataset.handAward);
+    const gift = award ? STATE.gifts.find(g=>g.id===award.giftId) : null;
+    if(!(await showConfirm("Hand over gift", `Confirm "${gift?gift.name:"this gift"}" has been physically handed to ${award?award.userId:""}?`, "Confirm"))) return;
+    markMilestoneAwardHandedOver(b.dataset.handAward, currentUser().name);
+    await saveState();
+    renderMilestones(app);
+  }));
+  const msExportBtn = document.getElementById("ms-export");
+  if(msExportBtn) msExportBtn.addEventListener("click", ()=>exportMilestonesExcel(historyRows));
+}
+function exportMilestonesExcel(historyRows){
+  if(!historyRows.length){ showAlert("Notice", "No milestone awards to export."); return; }
+  const data = historyRows.map(a=>{
+    const cust = lookupCustomer(a.userId);
+    return {
+      "User ID": a.userId,
+      "Name": cust ? cust.name : "",
+      "Total Spend": customerTotalSpend(a.userId),
+      "Milestone Threshold": a.milestone ? a.milestone.thresholdAmount : "",
+      "Max Wins": a.milestone ? (a.milestone.maxWins||1) : "",
+      "Gift": a.gift ? a.gift.name : "",
+      "Gift Type": a.gift ? a.gift.type : "",
+      "Discount %": a.gift && a.gift.type==="discount" ? a.gift.discountPct : "",
+      "Date Awarded": a.date||"",
+      "Status": a.redeemed ? (a.handedBy ? "Handed over" : "Redeemed") : "Pending",
+      "Handed Over By": a.handedBy||"",
+      "Handed Over Date": a.handedDate||"",
+    };
+  });
+  try{
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Milestone Awards");
+    XLSX.writeFile(wb, `eds-milestone-awards-${todayISO()}.xlsx`);
+  }catch(err){
+    showAlert("Export failed", "Couldn't build the Excel file — check your internet connection and try again.");
+  }
 }
 
 /* ============================= APPROVALS ============================= */
@@ -2368,7 +3024,7 @@ function renderApprovals(app){
       <div id="appr-boxes"></div>
     </section>
   `;
-  document.getElementById("appr-search").addEventListener("input", e=>{ approvalsFilter.q=e.target.value; renderApprovals(app); });
+  document.getElementById("appr-search").addEventListener("input", e=>{ approvalsFilter.q=e.target.value; rerenderPreservingFocus(()=>renderApprovals(app)); });
   app.querySelectorAll("[data-status]").forEach(b=>b.addEventListener("click", ()=>{ approvalsFilter.status=b.dataset.status; renderApprovals(app); }));
 
   const wrap = document.getElementById("appr-boxes");
@@ -2420,6 +3076,11 @@ function renderApprovals(app){
       if(finalize){
         const rows = invoiceList().get(no) || [];
         rows.forEach(r=> r.approvalStatus = "Approved");
+        // Nothing to actually collect — skip Payments and send it straight to Delivery.
+        const {grand} = invoiceSummary(rows);
+        if(Math.abs(grand) < 0.01){
+          rows.forEach(r=>{ r.paymentStatus = "Paid"; r.paymentMethod = "Free (Gift)"; });
+        }
       }
       await saveState();
       renderApprovals(app);
@@ -2489,7 +3150,7 @@ function renderManualOrders(app){
       <div id="mo-boxes"></div>
     </section>
   `;
-  document.getElementById("mo-search").addEventListener("input", e=>{ manualOrdersFilter.q=e.target.value; renderManualOrders(app); });
+  document.getElementById("mo-search").addEventListener("input", e=>{ manualOrdersFilter.q=e.target.value; rerenderPreservingFocus(()=>renderManualOrders(app)); });
   app.querySelectorAll("[data-status]").forEach(b=>b.addEventListener("click", ()=>{ manualOrdersFilter.status=b.dataset.status; renderManualOrders(app); }));
 
   const wrap = document.getElementById("mo-boxes");
@@ -2594,12 +3255,43 @@ function renderManualOrders(app){
 }
 
 
-let paymentFilter = { q:"" };
+let paymentFilter = { q:"", from:"", to:"" };
 let paymentDraftForms = {}; // invoiceNo -> [{id, method, amount}], in-progress split entry
 let recentlyPaidInvoices = []; // session-only, most-recent-first — lets you print right after confirming
 function getPaymentDraft(no, grand){
   if(!paymentDraftForms[no]) paymentDraftForms[no] = [{id:uid(), method:"Cash", amount: Math.round(grand*100)/100}];
   return paymentDraftForms[no];
+}
+/* Date actually paid (when available) rather than the order date — falls
+   back to the order date for older records with no timing captured. */
+function paidDateFor(no, rows){
+  const t = STATE.timing[no];
+  if(t && t.paidAt) return localDateKey(t.paidAt);
+  return rows[0] ? rows[0].date : "";
+}
+/* Total collected and its breakdown by payment method (Cash/Card/Bank
+   Transfer/etc.) for every fully-Paid invoice within the given date range —
+   uses the real split record when a payment was made across several
+   methods, so mixed payments count correctly toward each method. */
+function paidTotalsByMethod(fromDate, toDate){
+  let total = 0;
+  const byMethod = {};
+  invoiceList().forEach((rows, no)=>{
+    if(!rows.every(r=>r.paymentStatus==="Paid")) return;
+    const d = paidDateFor(no, rows);
+    if(fromDate && d < fromDate) return;
+    if(toDate && d > toDate) return;
+    const {grand} = invoiceSummary(rows);
+    total += grand;
+    const splits = STATE.paymentSplits[no];
+    if(splits && splits.length){
+      splits.forEach(s=>{ byMethod[s.method] = (byMethod[s.method]||0) + s.amount; });
+    } else {
+      const method = rows[0].paymentMethod || "Other";
+      byMethod[method] = (byMethod[method]||0) + grand;
+    }
+  });
+  return { total, byMethod };
 }
 function renderPayments(app){
   const map = invoiceList();
@@ -2621,6 +3313,16 @@ function renderPayments(app){
     .map(no=>({no, rows: map.get(no)||[]}))
     .filter(r=>r.rows.length && r.rows.every(x=>x.paymentStatus==="Paid"));
   const orderToPayment = avgOrderToPayment();
+  const todayStr = todayISO();
+  const isPreset = (f,t) => paymentFilter.from===f && paymentFilter.to===t;
+  const presetActive = {
+    today: isPreset(todayStr, todayStr),
+    d7: isPreset(shiftISODate(todayStr,-6), todayStr),
+    d30: isPreset(shiftISODate(todayStr,-29), todayStr),
+    all: !paymentFilter.from && !paymentFilter.to,
+  };
+  const { total: paidTotal, byMethod: paidByMethod } = paidTotalsByMethod(paymentFilter.from, paymentFilter.to);
+  const paidRangeLabel = (paymentFilter.from||paymentFilter.to) ? `${paymentFilter.from||"…"} → ${paymentFilter.to||"…"}` : "All time";
 
   app.innerHTML = `
     <section>
@@ -2630,6 +3332,33 @@ function renderPayments(app){
         <div class="card stat"><div class="label">Unpaid Invoices</div><div class="value danger">${invoices.length}</div></div>
         <div class="card stat"><div class="label">Outstanding</div><div class="value warn">${fmtEGP(totalOutstanding)}</div></div>
         <div class="card stat"><div class="label">Service Level — Order → Payment</div><div class="value">${orderToPayment==null?"—":fmtDuration(orderToPayment)}</div><div class="note">avg time to get paid</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <h3 style="margin:0;font-size:13.5px;">Collected — ${escapeHtml(paidRangeLabel)}</h3>
+          <span class="mono" style="font-weight:800;font-size:18px;color:var(--ok);">${fmtEGP(paidTotal)}</span>
+        </div>
+        <div class="toolbar" style="margin-bottom:12px;">
+          <div class="field"><label class="field-label">From</label><input type="date" id="pay-from" value="${escapeHtml(paymentFilter.from)}"></div>
+          <div class="field"><label class="field-label">To</label><input type="date" id="pay-to" value="${escapeHtml(paymentFilter.to)}"></div>
+          <div class="pill-toggle" style="align-self:end;">
+            <button data-pay-preset="today" class="${presetActive.today?'active':''}">Today</button>
+            <button data-pay-preset="d7" class="${presetActive.d7?'active':''}">7d</button>
+            <button data-pay-preset="d30" class="${presetActive.d30?'active':''}">30d</button>
+            <button data-pay-preset="all" class="${presetActive.all?'active':''}">All</button>
+          </div>
+        </div>
+        ${Object.keys(paidByMethod).length ? `
+          <div class="grid cols-4">
+            ${Object.entries(paidByMethod).sort((a,b)=>b[1]-a[1]).map(([method,amt])=>`
+              <div class="card stat" style="padding:10px 12px;">
+                <div class="label">${escapeHtml(method)}</div>
+                <div class="value" style="font-size:16px;">${fmtEGP(amt)}</div>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<div class="empty-state"><div class="glyph">💳</div>No payments collected in this range.</div>`}
       </div>
       ${recentPaidRows.length ? `
         <div class="card" style="margin-bottom:20px;border-color:var(--ok);">
@@ -2659,7 +3388,17 @@ function renderPayments(app){
       <div id="pay-boxes"></div>
     </section>
   `;
-  document.getElementById("pay-search").addEventListener("input", e=>{ paymentFilter.q=e.target.value; renderPayments(app); });
+  document.getElementById("pay-search").addEventListener("input", e=>{ paymentFilter.q=e.target.value; rerenderPreservingFocus(()=>renderPayments(app)); });
+  document.getElementById("pay-from").addEventListener("change", e=>{ paymentFilter.from=e.target.value; renderPayments(app); });
+  document.getElementById("pay-to").addEventListener("change", e=>{ paymentFilter.to=e.target.value; renderPayments(app); });
+  app.querySelectorAll("[data-pay-preset]").forEach(b=>b.addEventListener("click", ()=>{
+    const preset = b.dataset.payPreset;
+    if(preset==="today") paymentFilter = {...paymentFilter, from:todayStr, to:todayStr};
+    else if(preset==="d7") paymentFilter = {...paymentFilter, from:shiftISODate(todayStr,-6), to:todayStr};
+    else if(preset==="d30") paymentFilter = {...paymentFilter, from:shiftISODate(todayStr,-29), to:todayStr};
+    else paymentFilter = {...paymentFilter, from:"", to:""};
+    renderPayments(app);
+  }));
   app.querySelectorAll("[data-print-invoice]").forEach(b=>b.addEventListener("click", ()=>printInvoice(b.dataset.printInvoice)));
   app.querySelectorAll("[data-print-receipt-delivery]").forEach(b=>b.addEventListener("click", ()=>printReceiptFor(b.dataset.printReceiptDelivery, "Delivery Copy")));
   app.querySelectorAll("[data-print-receipt-customer]").forEach(b=>b.addEventListener("click", ()=>printReceiptFor(b.dataset.printReceiptCustomer, "Customer Copy")));
@@ -2804,7 +3543,7 @@ function renderDelivery(app){
     </div>
   `).join("") : `<div class="empty-state"><div class="glyph">📦</div>No ${deliveryFilter.status==="All"?"":deliveryFilter.status.toLowerCase()+" "}paid orders match this filter.</div>`;
 
-  document.getElementById("del-search").addEventListener("input", e=>{ deliveryFilter.q=e.target.value; renderDelivery(app); });
+  document.getElementById("del-search").addEventListener("input", e=>{ deliveryFilter.q=e.target.value; rerenderPreservingFocus(()=>renderDelivery(app)); });
   document.getElementById("del-status").addEventListener("change", e=>{ deliveryFilter.status=e.target.value; renderDelivery(app); });
   wrap.querySelectorAll("[data-toggle-order]").forEach(b=>b.addEventListener("click", async ()=>{
     const no = b.dataset.toggleOrder;
@@ -2833,6 +3572,89 @@ function lookupCustomer(userId){
   const key = String(userId).trim();
   if(!key) return null;
   return STATE.customers[key] || STATE.customers[key.toLowerCase()] || null;
+}
+/* An unclaimed subscription gift for this User ID, if any — surfaced as a
+   one-time free line item on the Orders page. */
+function lookupUnclaimedGift(userId){
+  if(!userId) return null;
+  const key = String(userId).trim();
+  if(!key) return null;
+  const sub = STATE.subscriptions[key] || STATE.subscriptions[key.toLowerCase()];
+  if(!sub || sub.claimed) return null;
+  return sub;
+}
+/* Resolves a subscription's actual gift object. Matches by ID first (the
+   reliable way — a Discount and a Product gift can share the same name
+   since Discount now targets a product too), falling back to name only for
+   subscriptions saved before giftId existed. */
+function resolveGiftForSub(sub){
+  if(!sub) return null;
+  return (sub.giftId && STATE.gifts.find(g=>g.id===sub.giftId)) || STATE.gifts.find(g=>g.name===sub.giftName) || null;
+}
+
+/* ============================= MILESTONE GIFTS ============================= */
+/* Total across every fully-Paid invoice for this User ID — the basis for
+   "spend X, unlock a spin" milestones, separate from the Subscription
+   signup-gift system. */
+function customerTotalSpend(userId){
+  const key = String(userId||"").trim();
+  if(!key) return 0;
+  let total = 0;
+  invoiceList().forEach((rows)=>{
+    const h = rows[0];
+    if(String(h.userId||"").trim().toLowerCase() !== key.toLowerCase()) return;
+    if(!rows.every(r=>r.paymentStatus==="Paid")) return;
+    total += invoiceSummary(rows).grand;
+  });
+  return total;
+}
+function milestoneAwardCount(userId, milestoneId){
+  const key = String(userId||"").trim().toLowerCase();
+  return STATE.milestoneAwards.filter(a=>String(a.userId||"").trim().toLowerCase()===key && a.milestoneId===milestoneId).length;
+}
+/* Every (customer, milestone) combo where they've crossed the spend
+   threshold but haven't used up all their spins yet — this is what powers
+   the "Eligible customers" table, where staff picks whatever gift the
+   customer actually won on the spin wheel. */
+function eligibleMilestoneSlots(){
+  const rows = [];
+  allCustomerUserIds().forEach(userId=>{
+    const spend = customerTotalSpend(userId);
+    STATE.milestones.forEach(m=>{
+      if(spend < m.thresholdAmount) return;
+      const used = milestoneAwardCount(userId, m.id);
+      const remaining = (m.maxWins||1) - used;
+      if(remaining > 0){
+        const cust = lookupCustomer(userId);
+        rows.push({ userId, name: cust?cust.name:"—", spend, milestone: m, used, remaining });
+      }
+    });
+  });
+  rows.sort((a,b)=>b.spend-a.spend);
+  return rows;
+}
+/* Records the outcome of one spin — which gift the customer actually won —
+   against a specific milestone. */
+function recordMilestoneAward(userId, milestoneId, giftId){
+  STATE.milestoneAwards.push({ id: uid(), userId: String(userId).trim(), milestoneId, giftId, date: todayISO(), redeemed:false });
+}
+/* Awarded gifts not yet redeemed/handed over, resolved with their actual
+   gift object (skipping any whose gift was since deleted). */
+function unredeemedMilestoneAwardsForUser(userId){
+  const key = String(userId||"").trim().toLowerCase();
+  if(!key) return [];
+  return STATE.milestoneAwards
+    .filter(a=>String(a.userId||"").trim().toLowerCase()===key && !a.redeemed)
+    .map(a=>({ ...a, gift: STATE.gifts.find(g=>g.id===a.giftId) }))
+    .filter(a=>a.gift);
+}
+function markMilestoneAwardRedeemed(awardId){
+  const a = STATE.milestoneAwards.find(x=>x.id===awardId);
+  if(a) a.redeemed = true;
+}
+function markMilestoneAwardHandedOver(awardId, handedBy){
+  const a = STATE.milestoneAwards.find(x=>x.id===awardId);
+  if(a){ a.redeemed = true; a.handedBy = handedBy; a.handedDate = todayISO(); }
 }
 
 /* Sums how much of a product this customer has already ordered across every
@@ -3018,14 +3840,14 @@ function renderSalesLog(app){
     }).join("");
   }
 
-  document.getElementById("log-search").addEventListener("input", e=>{ saleLogFilter.q=e.target.value; renderSalesLog(app); });
+  document.getElementById("log-search").addEventListener("input", e=>{ saleLogFilter.q=e.target.value; rerenderPreservingFocus(()=>renderSalesLog(app)); });
   document.getElementById("log-status").addEventListener("change", e=>{ saleLogFilter.status=e.target.value; renderSalesLog(app); });
   document.getElementById("log-event").addEventListener("change", e=>{ saleLogFilter.event=e.target.value; renderSalesLog(app); });
   document.getElementById("log-export").addEventListener("click", ()=>exportSalesLogExcel(rows));
   document.getElementById("log-delete-all").addEventListener("click", async ()=>{
     if(rows.length===0) return;
     const label = [saleLogFilter.event||null, saleLogFilter.status!=="All"?saleLogFilter.status:null, saleLogFilter.q?`"${saleLogFilter.q}"`:null].filter(Boolean).join(" · ") || "all sales";
-    if(!(await showConfirm("Delete all filtered rows", `Delete all ${rows.length} line item${rows.length===1?"":"s"} matching the current filter (${label})? This can't be undone.`, "Delete all"))) return;
+    if(!(await confirmDelete("Delete all filtered rows", `Delete all ${rows.length} line item${rows.length===1?"":"s"} matching the current filter (${label})? This can't be undone.`, "Delete all"))) return;
     const idsToDelete = new Set(rows.map(r=>r.id));
     STATE.sales = STATE.sales.filter(x=>!idsToDelete.has(x.id));
     pruneOrphanedDelivery();
@@ -3033,7 +3855,7 @@ function renderSalesLog(app){
     renderSalesLog(app);
   });
   body.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click", async ()=>{
-    if(!(await showConfirm("Delete line item", "Delete this line item?"))) return;
+    if(!(await confirmDelete("Delete line item", "Delete this line item?"))) return;
     STATE.sales = STATE.sales.filter(x=>x.id!==b.dataset.del);
     pruneOrphanedDelivery();
     await saveState(); renderSalesLog(app);
@@ -3170,6 +3992,26 @@ function buildInvoiceStandaloneHTML(no, rows){
 </head><body>${invoiceDocMarkup(no, rows)}</body></html>`;
 }
 
+const RECEIPT_STANDALONE_CSS = `
+  @page{ size: 75mm auto; margin: 0; }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:3mm;background:#fff;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#000;line-height:1.5;}
+  .r-center{text-align:center;}
+  .r-bold{font-weight:700;}
+  .r-dash{border-top:1px dashed #000;margin:5px 0;}
+  .rline{display:flex;justify-content:space-between;gap:8px;padding:1px 0;}
+  .rline>span:last-child{text-align:right;white-space:nowrap;}
+  .rline-sub{font-size:10px;color:#333;}
+`;
+function buildReceiptStandaloneHTML(no, rows, copyLabel){
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>${escapeHtml(no)} — ${escapeHtml(copyLabel||"Receipt")}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>${RECEIPT_STANDALONE_CSS}</style>
+</head><body>${receiptMarkup(no, rows, copyLabel)}</body></html>`;
+}
+
 function downloadBlobHTML(filename, html){
   const blob = new Blob([html], {type:"text/html"});
   const url = URL.createObjectURL(blob);
@@ -3178,10 +4020,20 @@ function downloadBlobHTML(filename, html){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
+function openBlobHTML(html){
+  const win = window.open("", "_blank");
+  if(!win){
+    showAlert("Couldn't open a new tab", "Your browser blocked the popup. Check the address bar for a \"blocked popup\" icon and allow it for this site, then try again.");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
 
 /* Printable from ANY tab (Invoices, Payments, ...) — fills the hidden
    global print area and triggers the browser print dialog. See the
-   body.printing-invoice / body.printing-receipt rules in the stylesheet. */
+   body.printing-invoice rule in the stylesheet. */
 function printInvoice(no){
   const rows = invoiceList().get(no) || [];
   if(!rows.length) return;
@@ -3189,6 +4041,8 @@ function printInvoice(no){
   document.body.classList.add("printing-invoice");
   window.print();
 }
+/* Fills the hidden global print area for the receipt (Delivery Copy /
+   Customer Copy) and triggers the browser's print dialog directly. */
 function printReceiptFor(no, copyLabel){
   const rows = invoiceList().get(no) || [];
   if(!rows.length) return;
@@ -3283,10 +4137,7 @@ function renderInvoices(app){
   openBtn.addEventListener("click", ()=>{
     if(!selectedNo) return;
     const html = buildInvoiceStandaloneHTML(selectedNo, map.get(selectedNo)||[]);
-    const blob = new Blob([html], {type:"text/html"});
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    setTimeout(()=>URL.revokeObjectURL(url), 15000);
+    openBlobHTML(html);
   });
   populateSelect();
 }
@@ -3771,7 +4622,7 @@ function renderSettings(app){
     renderSettings(app);
   });
   app.querySelectorAll("[data-del-event]").forEach(b=>b.addEventListener("click", async ()=>{
-    if(!(await showConfirm("Remove event", "Remove this event? Past orders keep showing its name, but it won't be selectable for new ones."))) return;
+    if(!(await confirmDelete("Remove event", "Remove this event? Past orders keep showing its name, but it won't be selectable for new ones."))) return;
     STATE.events = STATE.events.filter(x=>x.id!==b.dataset.delEvent);
     await saveState();
     renderSettings(app);
@@ -3788,7 +4639,7 @@ function renderSettings(app){
     renderSettings(app);
   });
   app.querySelectorAll("[data-del-salesmember]").forEach(b=>b.addEventListener("click", async ()=>{
-    if(!(await showConfirm("Remove sales member", `Remove "${b.dataset.delSalesmember}"? Past orders keep showing their name.`))) return;
+    if(!(await confirmDelete("Remove sales member", `Remove "${b.dataset.delSalesmember}"? Past orders keep showing their name.`))) return;
     STATE.salesMembers = STATE.salesMembers.filter(x=>x!==b.dataset.delSalesmember);
     await saveState();
     renderSettings(app);
@@ -3841,10 +4692,10 @@ function renderSettings(app){
     await saveState();
     renderSettings(app);
   });
-  document.getElementById("cust-search").addEventListener("input", e=>{ customerSearch = e.target.value; renderSettings(app); });
+  document.getElementById("cust-search").addEventListener("input", e=>{ customerSearch = e.target.value; rerenderPreservingFocus(()=>renderSettings(app)); });
   app.querySelectorAll("[data-del-customer]").forEach(b=>b.addEventListener("click", async ()=>{
     const id = b.dataset.delCustomer;
-    if(!(await showConfirm("Remove customer", `Remove "${id}" from the customer directory?`))) return;
+    if(!(await confirmDelete("Remove customer", `Remove "${id}" from the customer directory?`))) return;
     delete STATE.customers[id];
     await saveState();
     renderSettings(app);
@@ -3883,7 +4734,7 @@ function renderSettings(app){
   });
   app.querySelectorAll("[data-del-uni]").forEach(b=>b.addEventListener("click", async ()=>{
     const u = b.dataset.delUni;
-    if(uniUsage[u] && !(await showConfirm("Remove university", `"${u}" is used by ${uniUsage[u]} student(s). Remove it from the list anyway? Those customers keep showing "${u}" until you edit them.`))) return;
+    if(uniUsage[u] && !(await confirmDelete("Remove university", `"${u}" is used by ${uniUsage[u]} student(s). Remove it from the list anyway? Those customers keep showing "${u}" until you edit them.`))) return;
     STATE.universities = STATE.universities.filter(x=>x!==u);
     await saveState();
     renderSettings(app);
@@ -3891,14 +4742,14 @@ function renderSettings(app){
 
   app.querySelectorAll("[data-del-cat]").forEach(b=>b.addEventListener("click", async ()=>{
     const c = b.dataset.delCat;
-    if(catUsage[c] && !(await showConfirm("Remove category", `"${c}" is used by ${catUsage[c]} product(s). Remove it from the list anyway? Those products keep showing "${c}" until you edit them.`))) return;
+    if(catUsage[c] && !(await confirmDelete("Remove category", `"${c}" is used by ${catUsage[c]} product(s). Remove it from the list anyway? Those products keep showing "${c}" until you edit them.`))) return;
     STATE.categories = STATE.categories.filter(x=>x!==c);
     await saveState();
     renderSettings(app);
   }));
   app.querySelectorAll("[data-del-sup]").forEach(b=>b.addEventListener("click", async ()=>{
     const s = b.dataset.delSup;
-    if(supUsage[s] && !(await showConfirm("Remove supplier", `"${s}" is used by ${supUsage[s]} product(s). Remove it from the list anyway? Those products keep showing "${s}" until you edit them.`))) return;
+    if(supUsage[s] && !(await confirmDelete("Remove supplier", `"${s}" is used by ${supUsage[s]} product(s). Remove it from the list anyway? Those products keep showing "${s}" until you edit them.`))) return;
     STATE.suppliers = STATE.suppliers.filter(x=>x!==s);
     await saveState();
     renderSettings(app);
@@ -4050,7 +4901,7 @@ function renderUsers(app){
   document.querySelectorAll("[data-del-user]").forEach(b=>b.addEventListener("click", async ()=>{
     const id = b.dataset.delUser;
     const u = STATE.users.find(x=>x.id===id);
-    if(!(await showConfirm("Remove user", `Remove user "${u?u.name:""}"?`))) return;
+    if(!(await confirmDelete("Remove user", `Remove user "${u?u.name:""}"?`))) return;
     STATE.users = STATE.users.filter(x=>x.id!==id);
     if(STATE.currentUserId===id) STATE.currentUserId = ADMIN_ID;
     await saveState();
@@ -4090,7 +4941,7 @@ function renderUsers(app){
         throw new Error("This file doesn't look like an EDS Console backup.");
       }
       if(!(await showConfirm("Restore backup", "Replace all current data with this backup? This can't be undone."))) { e.target.value=""; return; }
-      STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],customers:{},users:[],currentUserId:""}, parsed);
+      STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],gifts:[],subscriptions:{},milestones:[],milestoneAwards:[],customers:{},users:[],currentUserId:""}, parsed);
       if(!Array.isArray(STATE.products) || STATE.products.length===0) STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
       if(!Array.isArray(STATE.users) || STATE.users.length===0) STATE.users = [{id:ADMIN_ID,name:"Admin",password:DEFAULT_ADMIN_PASSWORD,access:TABS.map(t=>t.id)}];
       rebuildIndexes();
@@ -4105,8 +4956,8 @@ function renderUsers(app){
 }
 
 window.addEventListener("afterprint", ()=>{
-  document.body.classList.remove("printing-receipt");
   document.body.classList.remove("printing-invoice");
+  document.body.classList.remove("printing-receipt");
 });
 
 /* ============================= INIT ============================= */
