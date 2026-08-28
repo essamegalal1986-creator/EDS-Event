@@ -598,11 +598,30 @@ function storageAvailable(){
 /* Applied whenever fresh data arrives from Firebase (initial load AND live
    updates from teammates). Skips re-rendering mid-keystroke so a remote
    update never yanks focus out from under someone who's typing. */
+/* Tracks what we last knew to be saved, so the merge below can tell "this
+   exists on the server but I don't have it — someone else just added it"
+   apart from "this exists on the server but I don't have it — because I
+   just deleted it locally". Without this, mergeRemoteIntoLocal would
+   silently resurrect anything you deleted right before it got saved. */
+let lastSyncedIds = { sales:new Set(), products:new Set(), events:new Set(), gifts:new Set(), milestones:new Set(), milestoneAwards:new Set(), users:new Set(), categories:new Set(), suppliers:new Set(), universities:new Set(), salesMembers:new Set(), timing:new Set(), delivery:new Set(), paymentSplits:new Set(), manualApprovals:new Set(), subscriptions:new Set(), customers:new Set() };
+function snapshotSyncedIds(){
+  lastSyncedIds.sales = new Set(STATE.sales.map(s=>s.id));
+  ["products","events","gifts","milestones","milestoneAwards","users"].forEach(key=>{
+    lastSyncedIds[key] = new Set((STATE[key]||[]).map(x=> (x && x.id!=null) ? x.id : JSON.stringify(x)));
+  });
+  ["categories","suppliers","universities","salesMembers"].forEach(key=>{
+    lastSyncedIds[key] = new Set(STATE[key]||[]);
+  });
+  ["timing","delivery","paymentSplits","manualApprovals","subscriptions","customers"].forEach(key=>{
+    lastSyncedIds[key] = new Set(Object.keys(STATE[key]||{}));
+  });
+}
 function applyRemoteState(remote){
   if(!remote || typeof remote !== "object") return;
   STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],gifts:[],subscriptions:{},milestones:[],milestoneAwards:[],customers:{},users:[],currentUserId:""}, remote);
   ensureStateDefaults();
   rebuildIndexes();
+  snapshotSyncedIds();
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE)); }catch(e){}
   if(!loaded){ loaded = true; }
   const active = document.activeElement;
@@ -623,6 +642,7 @@ async function loadState(){
       }
       ensureStateDefaults();
       rebuildIndexes();
+      snapshotSyncedIds();
       loaded = true;
       // live updates from every other browser/device from now on
       if(!fbListenerAttached){
@@ -649,6 +669,7 @@ async function loadState(){
   }catch(e){ console.error("Storage load error", e); }
   ensureStateDefaults();
   rebuildIndexes();
+  snapshotSyncedIds();
   loaded = true;
 }
 
@@ -665,25 +686,31 @@ function hasAccess(tabId){
    naive overwrite would let whichever save lands second silently erase
    the other's brand-new record. This pulls in anything new from the
    server immediately before saving, so concurrent additions from other
-   devices survive instead of getting wiped out. */
+   devices survive instead of getting wiped out.
+   Crucially, "new" here means "wasn't in our last-synced snapshot either" —
+   otherwise a record you just deleted (present on the server's older
+   snapshot, absent from your local state) would get silently added right
+   back before your deletion is even written. */
 function mergeRemoteIntoLocal(remote){
   if(!remote || typeof remote !== "object") return;
   if(Array.isArray(remote.sales)){
     const localIds = new Set(STATE.sales.map(s=>s.id));
-    remote.sales.forEach(rs=>{ if(rs && rs.id!=null && !localIds.has(rs.id)) STATE.sales.push(rs); });
+    remote.sales.forEach(rs=>{
+      if(rs && rs.id!=null && !localIds.has(rs.id) && !lastSyncedIds.sales.has(rs.id)) STATE.sales.push(rs);
+    });
   }
   ["timing","delivery","paymentSplits","manualApprovals","subscriptions","customers"].forEach(key=>{
     if(remote[key] && typeof remote[key]==="object" && !Array.isArray(remote[key])){
       if(!STATE[key] || typeof STATE[key]!=="object") STATE[key] = {};
       Object.keys(remote[key]).forEach(k=>{
-        if(!(k in STATE[key])) STATE[key][k] = remote[key][k];
+        if(!(k in STATE[key]) && !lastSyncedIds[key].has(k)) STATE[key][k] = remote[key][k];
       });
     }
   });
   ["categories","suppliers","universities","salesMembers"].forEach(key=>{
     if(Array.isArray(remote[key]) && Array.isArray(STATE[key])){
       const localSet = new Set(STATE[key]);
-      remote[key].forEach(item=>{ if(!localSet.has(item)) STATE[key].push(item); });
+      remote[key].forEach(item=>{ if(!localSet.has(item) && !lastSyncedIds[key].has(item)) STATE[key].push(item); });
     }
   });
   ["products","events","gifts","milestones","milestoneAwards","users"].forEach(key=>{
@@ -691,7 +718,7 @@ function mergeRemoteIntoLocal(remote){
       const localIds = new Set(STATE[key].map(x=> (x && x.id!=null) ? x.id : JSON.stringify(x)));
       remote[key].forEach(item=>{
         const idKey = (item && item.id!=null) ? item.id : JSON.stringify(item);
-        if(!localIds.has(idKey)) STATE[key].push(item);
+        if(!localIds.has(idKey) && !lastSyncedIds[key].has(idKey)) STATE[key].push(item);
       });
     }
   });
@@ -704,6 +731,7 @@ async function saveState(){
       const snap = await fbDb.ref(STORAGE_KEY).once("value");
       mergeRemoteIntoLocal(snap.val());
       await fbDb.ref(STORAGE_KEY).set(STATE);
+      snapshotSyncedIds();
       syncMode = "cloud";
       return true;
     }catch(e){
@@ -713,6 +741,7 @@ async function saveState(){
       return false;
     }
   }
+  snapshotSyncedIds();
   return true;
 }
 
