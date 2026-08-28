@@ -603,7 +603,7 @@ function storageAvailable(){
    apart from "this exists on the server but I don't have it — because I
    just deleted it locally". Without this, mergeRemoteIntoLocal would
    silently resurrect anything you deleted right before it got saved. */
-let lastSyncedIds = { sales:new Set(), products:new Set(), events:new Set(), gifts:new Set(), milestones:new Set(), milestoneAwards:new Set(), users:new Set(), categories:new Set(), suppliers:new Set(), universities:new Set(), salesMembers:new Set(), timing:new Set(), delivery:new Set(), paymentSplits:new Set(), manualApprovals:new Set(), subscriptions:new Set(), customers:new Set() };
+let lastSyncedIds = { sales:new Set(), products:new Set(), events:new Set(), gifts:new Set(), milestones:new Set(), milestoneAwards:new Set(), users:new Set(), categories:new Set(), suppliers:new Set(), universities:new Set(), salesMembers:new Set(), timing:new Set(), delivery:new Set(), paymentSplits:new Set(), manualApprovals:new Set(), subscriptions:new Set() };
 function snapshotSyncedIds(){
   lastSyncedIds.sales = new Set(STATE.sales.map(s=>s.id));
   ["products","events","gifts","milestones","milestoneAwards","users"].forEach(key=>{
@@ -612,7 +612,7 @@ function snapshotSyncedIds(){
   ["categories","suppliers","universities","salesMembers"].forEach(key=>{
     lastSyncedIds[key] = new Set(STATE[key]||[]);
   });
-  ["timing","delivery","paymentSplits","manualApprovals","subscriptions","customers"].forEach(key=>{
+  ["timing","delivery","paymentSplits","manualApprovals","subscriptions"].forEach(key=>{
     lastSyncedIds[key] = new Set(Object.keys(STATE[key]||{}));
   });
 }
@@ -699,7 +699,7 @@ function mergeRemoteIntoLocal(remote){
       if(rs && rs.id!=null && !localIds.has(rs.id) && !lastSyncedIds.sales.has(rs.id)) STATE.sales.push(rs);
     });
   }
-  ["timing","delivery","paymentSplits","manualApprovals","subscriptions","customers"].forEach(key=>{
+  ["timing","delivery","paymentSplits","manualApprovals","subscriptions"].forEach(key=>{
     if(remote[key] && typeof remote[key]==="object" && !Array.isArray(remote[key])){
       if(!STATE[key] || typeof STATE[key]!=="object") STATE[key] = {};
       Object.keys(remote[key]).forEach(k=>{
@@ -762,6 +762,109 @@ async function ensureUniqueInvoiceNo(desiredNo){
   }
   if(!STATE.sales.some(s=>s.invoiceNo===desiredNo)) return desiredNo;
   return nextInvoiceNo();
+}
+
+/* ============================================================
+   CUSTOMER DIRECTORY — separate Firebase path from the main
+   STATE blob, on purpose.
+   ------------------------------------------------------------
+   Everything else in this app (sales, products, users, etc.)
+   lives in one shared blob that gets fully re-read and
+   re-written on every single save — fine at normal sizes, but a
+   large customer list (tens of thousands of rows) would make
+   every single order/payment/delete transfer several extra MB
+   each time, for every connected device. That burns through
+   Firebase's free-tier download quota extremely fast with more
+   than a couple of people using the app at once.
+   So the directory gets its own path, its own live listener (it
+   only re-syncs when customer data itself changes, not on every
+   unrelated action), and targeted single-record writes — editing
+   one customer sends only that customer, not the whole directory.
+   ============================================================ */
+const CUSTOMERS_KEY = "eds_console_customers_v1";
+let CUSTOMERS = {};
+let customersListenerAttached = false;
+
+function saveCustomersLocalCache(){
+  try{ localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(CUSTOMERS)); }catch(e){ /* ignore — directory can be large */ }
+}
+function applyRemoteCustomers(remote){
+  CUSTOMERS = (remote && typeof remote === "object") ? remote : {};
+  saveCustomersLocalCache();
+  const active = document.activeElement;
+  const isTyping = active && ["INPUT","TEXTAREA","SELECT"].includes(active.tagName);
+  if(loaded && !isTyping) render();
+}
+async function loadCustomers(){
+  if(fbReady){
+    try{
+      const snap = await fbDb.ref(CUSTOMERS_KEY).once("value");
+      const remote = snap.val();
+      if(remote){
+        CUSTOMERS = remote;
+      } else if(STATE.customers && Object.keys(STATE.customers).length){
+        // One-time migration: older saves kept the directory inside the
+        // main blob. Move it to its own path the first time we see it.
+        CUSTOMERS = STATE.customers;
+        try{ await fbDb.ref(CUSTOMERS_KEY).set(CUSTOMERS); }catch(e){ console.error("Customer migration failed", e); }
+      }
+      delete STATE.customers; // never persist a duplicate copy in the main blob again
+      saveCustomersLocalCache();
+      if(!customersListenerAttached){
+        customersListenerAttached = true;
+        fbDb.ref(CUSTOMERS_KEY).on("value", snap=>applyRemoteCustomers(snap.val()));
+      }
+      return;
+    }catch(e){
+      console.error("Customer directory load failed, falling back to local", e);
+    }
+  }
+  try{
+    const raw = localStorage.getItem(CUSTOMERS_KEY);
+    if(raw) CUSTOMERS = JSON.parse(raw);
+    else if(STATE.customers) CUSTOMERS = STATE.customers;
+  }catch(e){ console.error("Customer directory local load error", e); }
+}
+/* Targeted write for ONE customer — a few hundred bytes over the wire,
+   not the whole directory. Used for manual add/edit and Orders' quick-save. */
+async function saveCustomer(userId, data){
+  CUSTOMERS[userId] = data;
+  saveCustomersLocalCache();
+  if(fbReady){
+    try{ await fbDb.ref(CUSTOMERS_KEY + "/" + encodeCustomerKey(userId)).set(data); return true; }
+    catch(e){ console.error("Customer save error", e); showSaveError(); return false; }
+  }
+  return true;
+}
+async function deleteCustomerRemote(userId){
+  delete CUSTOMERS[userId];
+  saveCustomersLocalCache();
+  if(fbReady){
+    try{ await fbDb.ref(CUSTOMERS_KEY + "/" + encodeCustomerKey(userId)).remove(); return true; }
+    catch(e){ console.error("Customer delete error", e); showSaveError(); return false; }
+  }
+  return true;
+}
+/* Bulk import (Excel) — one single multi-path update instead of hundreds
+   or thousands of individual writes. */
+async function bulkSaveCustomers(map){
+  Object.assign(CUSTOMERS, map);
+  saveCustomersLocalCache();
+  if(fbReady){
+    try{
+      const updates = {};
+      Object.entries(map).forEach(([id, data])=>{ updates[encodeCustomerKey(id)] = data; });
+      await fbDb.ref(CUSTOMERS_KEY).update(updates);
+      return true;
+    }catch(e){ console.error("Bulk customer save error", e); showSaveError(); return false; }
+  }
+  return true;
+}
+/* Firebase keys can't contain ".", "#", "$", "[", "]", or "/" — User IDs
+   occasionally do (e.g. an email-style ID), so keys get sanitized for
+   storage and decoded back on read. */
+function encodeCustomerKey(id){
+  return String(id).replace(/[.#$\[\]\/]/g, c => "~" + c.charCodeAt(0).toString(16) + "~");
 }
 
 let saveErrorShown = false;
@@ -2260,10 +2363,7 @@ function renderNewSale(app){
           <div class="field"><label class="field-label">Customer</label><input id="f-customer" placeholder="Customer name" value="${escapeHtml(f.customer)}"></div>
           <div class="field">
             <label class="field-label">User ID</label>
-            <input id="f-userId" list="userid-directory" placeholder="e.g. u-104" value="${escapeHtml(f.userId)}">
-            <datalist id="userid-directory">
-              ${Object.keys(STATE.customers).map(id=>`<option value="${escapeHtml(id)}">`).join("")}
-            </datalist>
+            <input id="f-userId" placeholder="e.g. u-104" value="${escapeHtml(f.userId)}">
             <div id="userid-hint" style="margin-top:4px;font-size:11.5px;"></div>
           </div>
         </div>
@@ -2447,12 +2547,11 @@ function renderNewSale(app){
     document.getElementById("save-new-customer").addEventListener("click", async ()=>{
       const name = f.customer.trim();
       if(!name){ showAlert("Notice", "Enter the customer's name first."); return; }
-      STATE.customers[id] = {
+      await saveCustomer(id, {
         name, phone:"",
         role: newCustomerDraft.role||"Other",
         university: newCustomerDraft.role==="Student" ? (newCustomerDraft.university||"") : ""
-      };
-      await saveState();
+      });
       newCustomerDraft = { role:"Other", university:"" };
       refreshUserIdHint();
     });
@@ -2681,7 +2780,10 @@ function renderSubscriptions(app){
             ${STATE.gifts.map(g=>`<option value="${escapeHtml(g.id)}" ${newSubForm.giftId===g.id?"selected":""}>${g.type==='discount'?`${escapeHtml(g.name)} (${g.discountPct}% off)`:escapeHtml(g.name)}</option>`).join("")}
           </select>
         </div>
-        <button class="btn primary" id="sub-save">Save subscription</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn primary" id="sub-save">Save subscription</button>
+          <button class="btn ghost" id="sub-reset">Reset</button>
+        </div>
       </div>
     </section>
 
@@ -2749,13 +2851,17 @@ function renderSubscriptions(app){
     const role = newSubForm.role || "Other";
     const university = role==="Student" ? (newSubForm.university||"") : "";
     // A customer is "new" if they had no directory entry and no prior orders before this subscription.
-    const isNewUser = !STATE.customers[userId] && !STATE.sales.some(s=>(s.userId||"").trim()===userId);
+    const isNewUser = !CUSTOMERS[userId] && !STATE.sales.some(s=>(s.userId||"").trim()===userId);
     // Keep the shared Customer Directory in sync too, so Orders auto-fill still works.
-    STATE.customers[userId] = { name, phone, role, university };
+    await saveCustomer(userId, { name, phone, role, university });
     STATE.subscriptions[userId] = { name, phone, role, university, date: todayISO(), giftId: gift.id, giftName: gift.name, claimed:false, isNewUser };
     newSubForm = freshSubForm();
     await saveState();
     await showAlert("Subscription saved", `${name} is now eligible for a gift. It'll show up automatically the next time their User ID is entered on the Orders page.`);
+    renderSubscriptions(app);
+  });
+  document.getElementById("sub-reset").addEventListener("click", ()=>{
+    newSubForm = freshSubForm();
     renderSubscriptions(app);
   });
   app.querySelectorAll("[data-del-sub]").forEach(b=>b.addEventListener("click", async ()=>{
@@ -2813,7 +2919,7 @@ function freshMilestoneForm(){ return { thresholdAmount:"", maxWins:"1" }; }
 function allCustomerUserIds(){
   const ids = new Set();
   STATE.sales.forEach(s=>{ if(s.userId && s.userId.trim()) ids.add(s.userId.trim()); });
-  Object.keys(STATE.customers).forEach(id=>ids.add(id));
+  Object.keys(CUSTOMERS).forEach(id=>ids.add(id));
   return [...ids];
 }
 let pickedGiftBySlot = {}; // "userId|milestoneId" -> giftId, remembers the dropdown choice between re-renders
@@ -2844,7 +2950,10 @@ function renderMilestones(app){
               <option value="3" ${newMilestoneForm.maxWins==='3'?'selected':''}>3 times</option>
             </select>
           </div>
-          <button class="btn primary sm" id="ms-save">Add milestone</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn primary sm" id="ms-save">Add milestone</button>
+            <button class="btn ghost sm" id="ms-reset">Reset</button>
+          </div>
         </div>
         <div class="card">
           <h3 style="margin:0 0 12px;font-size:13.5px;">All milestones</h3>
@@ -2901,7 +3010,7 @@ function renderMilestones(app){
       <p class="section-desc">Awarded "Item" gifts (like a mug or pen) aren't handled through Orders — mark them off here once physically given to the customer.</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>User ID</th><th>Gift</th><th>Awarded</th><th></th></tr></thead>
+          <thead><tr><th>User ID</th><th>Gift</th><th>Awarded</th><th colspan="2"></th></tr></thead>
           <tbody>
           ${(() => {
             let pending = STATE.milestoneAwards
@@ -2915,8 +3024,9 @@ function renderMilestones(app){
                 <td>${escapeHtml(a.gift.name)} <span class="badge tint">item</span></td>
                 <td>${escapeHtml(a.date||"")}</td>
                 <td><button class="btn primary sm" data-hand-award="${escapeHtml(a.id)}">Mark as handed over</button></td>
+                <td><button class="btn danger-ghost sm" data-del-award="${escapeHtml(a.id)}">Delete</button></td>
               </tr>
-            `).join("") : `<tr><td colspan="4"><div class="empty-state"><div class="glyph">🎁</div>Nothing pending hand-over.</div></td></tr>`;
+            `).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">🎁</div>Nothing pending hand-over.</div></td></tr>`;
           })()}
           </tbody>
         </table>
@@ -2931,7 +3041,7 @@ function renderMilestones(app){
       <p class="section-desc">Every gift ever won, redeemed or not${filterKey?` for User ID matching "${escapeHtml(milestoneFilterUserId)}"`:""}.</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>User ID</th><th>Milestone</th><th>Gift</th><th>Date</th><th>Status</th></tr></thead>
+          <thead><tr><th>User ID</th><th>Milestone</th><th>Gift</th><th>Date</th><th>Status</th><th></th></tr></thead>
           <tbody>
           ${historyRows.length ? historyRows.map(a=>`
             <tr>
@@ -2940,8 +3050,9 @@ function renderMilestones(app){
               <td>${a.gift?escapeHtml(a.gift.name):"(deleted gift)"} ${a.gift?`<span class="badge ${a.gift.type==='discount'?'accent':'tint'}">${a.gift.type}</span>`:""}</td>
               <td>${escapeHtml(a.date||"")}</td>
               <td>${a.redeemed ? (a.handedBy?`<span class="badge muted">Handed over by ${escapeHtml(a.handedBy)}</span>`:`<span class="badge muted">Redeemed</span>`) : `<span class="badge ok">Pending</span>`}</td>
+              <td><button class="btn danger-ghost sm" data-del-award="${escapeHtml(a.id)}">Delete</button></td>
             </tr>
-          `).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">📋</div>No awards yet${filterKey?" for that filter":""}.</div></td></tr>`}
+          `).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="glyph">📋</div>No awards yet${filterKey?" for that filter":""}.</div></td></tr>`}
           </tbody>
         </table>
       </div>
@@ -2957,6 +3068,10 @@ function renderMilestones(app){
     STATE.milestones.push({ id: uid(), thresholdAmount: threshold, maxWins: Number(newMilestoneForm.maxWins)||1 });
     newMilestoneForm = freshMilestoneForm();
     await saveState();
+    renderMilestones(app);
+  });
+  document.getElementById("ms-reset").addEventListener("click", ()=>{
+    newMilestoneForm = freshMilestoneForm();
     renderMilestones(app);
   });
   app.querySelectorAll("[data-del-milestone]").forEach(b=>b.addEventListener("click", async ()=>{
@@ -2985,6 +3100,14 @@ function renderMilestones(app){
     const gift = award ? STATE.gifts.find(g=>g.id===award.giftId) : null;
     if(!(await showConfirm("Hand over gift", `Confirm "${gift?gift.name:"this gift"}" has been physically handed to ${award?award.userId:""}?`, "Confirm"))) return;
     markMilestoneAwardHandedOver(b.dataset.handAward, currentUser().name);
+    await saveState();
+    renderMilestones(app);
+  }));
+  app.querySelectorAll("[data-del-award]").forEach(b=>b.addEventListener("click", async ()=>{
+    const award = STATE.milestoneAwards.find(x=>x.id===b.dataset.delAward);
+    const gift = award ? STATE.gifts.find(g=>g.id===award.giftId) : null;
+    if(!(await confirmDelete("Delete award", `Delete this award record${gift?` ("${gift.name}"`:""}${award?` for ${award.userId}`:""}${gift?")":""}? This can't be undone.`))) return;
+    STATE.milestoneAwards = STATE.milestoneAwards.filter(x=>x.id!==b.dataset.delAward);
     await saveState();
     renderMilestones(app);
   }));
@@ -3600,7 +3723,7 @@ function lookupCustomer(userId){
   if(!userId) return null;
   const key = String(userId).trim();
   if(!key) return null;
-  return STATE.customers[key] || STATE.customers[key.toLowerCase()] || null;
+  return CUSTOMERS[key] || CUSTOMERS[key.toLowerCase()] || null;
 }
 /* An unclaimed subscription gift for this User ID, if any — surfaced as a
    one-time free line item on the Orders page. */
@@ -3738,6 +3861,7 @@ async function importCustomersFromExcel(file){
     throw new Error("Couldn't find a User ID column and a Name column. Expected headers like \"User ID\" and \"Name\".");
   }
   let added = 0, updated = 0, newUnis = 0;
+  const batch = {};
   rows.forEach(r=>{
     const id = String(r[idKey]||"").trim();
     const name = String(r[nameKey]||"").trim();
@@ -3749,10 +3873,11 @@ async function importCustomersFromExcel(file){
       STATE.universities.push(university);
       newUnis++;
     }
-    if(STATE.customers[id]) updated++; else added++;
-    STATE.customers[id] = { name, phone, role, university };
+    if(CUSTOMERS[id]) updated++; else added++;
+    batch[id] = { name, phone, role, university };
   });
-  await saveState();
+  await bulkSaveCustomers(batch);
+  if(newUnis) await saveState(); // only touch the main blob if the Universities list changed
   return {added, updated, total: added+updated, newUnis};
 }
 
@@ -4112,6 +4237,7 @@ function renderInvoices(app){
         <button class="btn ghost" id="print-invoice" style="align-self:end;" disabled>Print</button>
         <button class="btn ghost" id="print-receipt-delivery" style="align-self:end;" disabled title="Narrow label format, for thermal printers like Zebra">Print delivery copy</button>
         <button class="btn ghost" id="print-receipt-customer" style="align-self:end;" disabled title="Narrow label format, for thermal printers like Zebra">Print customer copy</button>
+        <button class="btn danger-ghost" id="delete-invoice" style="align-self:end;" disabled>Delete this order</button>
       </div>
       <div id="invoice-doc"></div>
     </section>
@@ -4123,6 +4249,7 @@ function renderInvoices(app){
   const printBtn = document.getElementById("print-invoice");
   const printReceiptDeliveryBtn = document.getElementById("print-receipt-delivery");
   const printReceiptCustomerBtn = document.getElementById("print-receipt-customer");
+  const deleteInvoiceBtn = document.getElementById("delete-invoice");
   let selectedNo = "";
 
   function populateSelect(preserve){
@@ -4145,6 +4272,7 @@ function renderInvoices(app){
     const enabled = !!(no && map.get(no) && map.get(no).length);
     openBtn.disabled = !enabled; downloadBtn.disabled = !enabled; printBtn.disabled = !enabled;
     printReceiptDeliveryBtn.disabled = !enabled; printReceiptCustomerBtn.disabled = !enabled;
+    deleteInvoiceBtn.disabled = !enabled;
     if(!no){ target.innerHTML = `<div class="empty-state"><div class="glyph">🧾</div>Pick an invoice number above to view it.</div>`; return; }
     const rows = map.get(no) || [];
     if(rows.length===0){ target.innerHTML = `<div class="empty-state">No such invoice.</div>`; return; }
@@ -4158,6 +4286,15 @@ function renderInvoices(app){
   printBtn.addEventListener("click", ()=>{ if(selectedNo) printInvoice(selectedNo); });
   printReceiptDeliveryBtn.addEventListener("click", ()=>{ if(selectedNo) printReceiptFor(selectedNo, "Delivery Copy"); });
   printReceiptCustomerBtn.addEventListener("click", ()=>{ if(selectedNo) printReceiptFor(selectedNo, "Customer Copy"); });
+  deleteInvoiceBtn.addEventListener("click", async ()=>{
+    if(!selectedNo) return;
+    const rows = map.get(selectedNo) || [];
+    if(!(await confirmDelete("Delete this order", `Delete order ${selectedNo} entirely — all ${rows.length} line item${rows.length===1?"":"s"}? This can't be undone.`, "Delete order"))) return;
+    STATE.sales = STATE.sales.filter(s=>s.invoiceNo!==selectedNo);
+    pruneOrphanedDelivery();
+    await saveState();
+    populateSelect("");
+  });
   downloadBtn.addEventListener("click", ()=>{
     if(!selectedNo) return;
     const html = buildInvoiceStandaloneHTML(selectedNo, map.get(selectedNo)||[]);
@@ -4439,6 +4576,7 @@ let newSupplierName = "";
 let newUniversityName = "";
 let newCustomerForm = { userId:"", name:"", phone:"", role:"Other", university:"" };
 let customerSearch = "";
+let customerDirectoryLimit = 200; // avoids freezing the page on a very large directory — "Show more" raises this
 let newEventForm = { name:"", startDate:"", endDate:"" };
 let newSalesMemberName = "";
 function renderSettings(app){
@@ -4449,14 +4587,16 @@ function renderSettings(app){
     if(p.supplier) supUsage[p.supplier] = (supUsage[p.supplier]||0)+1;
   });
 
-  let customerRows = Object.entries(STATE.customers).map(([id,c])=>({id, name:c.name, phone:c.phone||"", role:c.role||"Other", university:c.university||""}));
+  let customerRows = Object.entries(CUSTOMERS).map(([id,c])=>({id, name:c.name, phone:c.phone||"", role:c.role||"Other", university:c.university||""}));
   if(customerSearch){
     const q = customerSearch.toLowerCase();
     customerRows = customerRows.filter(c=>c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
   }
   customerRows.sort((a,b)=> a.name.localeCompare(b.name));
+  const totalMatching = customerRows.length;
+  const visibleRows = customerRows.slice(0, customerDirectoryLimit);
   const uniUsage = {};
-  Object.values(STATE.customers).forEach(c=>{ if(c.role==="Student" && c.university) uniUsage[c.university] = (uniUsage[c.university]||0)+1; });
+  Object.values(CUSTOMERS).forEach(c=>{ if(c.role==="Student" && c.university) uniUsage[c.university] = (uniUsage[c.university]||0)+1; });
 
   app.innerHTML = `
     <section style="margin-bottom:26px;">
@@ -4614,13 +4754,13 @@ function renderSettings(app){
 
       <div class="toolbar">
         <div class="field"><label class="field-label">Search</label><input id="cust-search" placeholder="User ID or name…" value="${escapeHtml(customerSearch)}"></div>
-        <div style="align-self:end;color:var(--ink-soft);font-size:12.5px;">${customerRows.length} of ${Object.keys(STATE.customers).length} customers</div>
+        <div style="align-self:end;color:var(--ink-soft);font-size:12.5px;">Showing ${visibleRows.length} of ${totalMatching}${totalMatching!==Object.keys(CUSTOMERS).length?` matching (${Object.keys(CUSTOMERS).length} total)`:""}</div>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>User ID</th><th>Name</th><th>Phone</th><th>Type</th><th>University</th><th></th></tr></thead>
           <tbody>
-          ${customerRows.length ? customerRows.map(c=>`
+          ${visibleRows.length ? visibleRows.map(c=>`
             <tr>
               <td class="mono">${escapeHtml(c.id)}</td>
               <td>${escapeHtml(c.name)}</td>
@@ -4629,9 +4769,14 @@ function renderSettings(app){
               <td>${c.role==='Student' ? (escapeHtml(c.university)||"—") : "—"}</td>
               <td><button class="btn danger-ghost sm" data-del-customer="${escapeHtml(c.id)}">Delete</button></td>
             </tr>
-          `).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="glyph">👤</div>No customers in the directory yet.</div></td></tr>`}
+          `).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="glyph">👤</div>${customerSearch?"No customers match that search.":"No customers in the directory yet."}</div></td></tr>`}
           </tbody>
         </table>
+        ${totalMatching > visibleRows.length ? `
+          <div style="text-align:center;padding:14px;">
+            <button class="btn ghost sm" id="cust-show-more">Show ${Math.min(200, totalMatching-visibleRows.length)} more (${totalMatching-visibleRows.length} left)</button>
+          </div>
+        ` : ""}
       </div>
     </section>
   `;
@@ -4712,21 +4857,21 @@ function renderSettings(app){
     const id = newCustomerForm.userId.trim();
     const name = newCustomerForm.name.trim();
     if(!id || !name){ showAlert("Notice", "User ID and Name are both required."); return; }
-    STATE.customers[id] = {
+    await saveCustomer(id, {
       name, phone: newCustomerForm.phone.trim(),
       role: newCustomerForm.role || "Other",
       university: newCustomerForm.role==="Student" ? (newCustomerForm.university||"") : ""
-    };
+    });
     newCustomerForm = { userId:"", name:"", phone:"", role:"Other", university:"" };
-    await saveState();
     renderSettings(app);
   });
-  document.getElementById("cust-search").addEventListener("input", e=>{ customerSearch = e.target.value; rerenderPreservingFocus(()=>renderSettings(app)); });
+  document.getElementById("cust-search").addEventListener("input", e=>{ customerSearch = e.target.value; customerDirectoryLimit = 200; rerenderPreservingFocus(()=>renderSettings(app)); });
+  const custShowMoreBtn = document.getElementById("cust-show-more");
+  if(custShowMoreBtn) custShowMoreBtn.addEventListener("click", ()=>{ customerDirectoryLimit += 200; renderSettings(app); });
   app.querySelectorAll("[data-del-customer]").forEach(b=>b.addEventListener("click", async ()=>{
     const id = b.dataset.delCustomer;
     if(!(await confirmDelete("Remove customer", `Remove "${id}" from the customer directory?`))) return;
-    delete STATE.customers[id];
-    await saveState();
+    await deleteCustomerRemote(id);
     renderSettings(app);
   }));
 
@@ -4950,7 +5095,9 @@ function renderUsers(app){
 
   const backupMsg = document.getElementById("backup-msg");
   document.getElementById("backup-download").addEventListener("click", ()=>{
-    const payload = JSON.stringify(STATE, null, 2);
+    // Customers live in their own Firebase path now (see the note above),
+    // but a backup should still capture everything in one file.
+    const payload = JSON.stringify({ ...STATE, customers: CUSTOMERS }, null, 2);
     const blob = new Blob([payload], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -4958,7 +5105,7 @@ function renderUsers(app){
     a.href = url; a.download = `eds-console-backup-${stamp}.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 4000);
-    backupMsg.innerHTML = `<span style="color:var(--ok);">Backup downloaded.</span>`;
+    backupMsg.innerHTML = `<span style="color:var(--ok);">Backup downloaded (includes ${Object.keys(CUSTOMERS).length} customers).</span>`;
   });
   document.getElementById("backup-file").addEventListener("change", async e=>{
     const file = e.target.files[0];
@@ -4970,12 +5117,22 @@ function renderUsers(app){
         throw new Error("This file doesn't look like an EDS Console backup.");
       }
       if(!(await showConfirm("Restore backup", "Replace all current data with this backup? This can't be undone."))) { e.target.value=""; return; }
-      STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],gifts:[],subscriptions:{},milestones:[],milestoneAwards:[],customers:{},users:[],currentUserId:""}, parsed);
+      const restoredCustomers = (parsed.customers && typeof parsed.customers==="object") ? parsed.customers : null;
+      STATE = Object.assign({sales:[],restock:{},reorder:{},delivery:{},paymentSplits:{},manualApprovals:{},timing:{},products:[],categories:[],suppliers:[],universities:[],events:[],salesMembers:[],gifts:[],subscriptions:{},milestones:[],milestoneAwards:[],users:[],currentUserId:""}, parsed);
+      delete STATE.customers; // customers restore separately, into their own path — see below
       if(!Array.isArray(STATE.products) || STATE.products.length===0) STATE.products = JSON.parse(JSON.stringify(BASE_PRODUCTS));
       if(!Array.isArray(STATE.users) || STATE.users.length===0) STATE.users = [{id:ADMIN_ID,name:"Admin",password:DEFAULT_ADMIN_PASSWORD,access:TABS.map(t=>t.id)}];
       rebuildIndexes();
       await saveState();
-      backupMsg.innerHTML = `<span style="color:var(--ok);">Backup restored — ${STATE.sales.length} sale lines loaded.</span>`;
+      let customerNote = "";
+      if(restoredCustomers){
+        CUSTOMERS = {}; // full replace, not merge, to match "replace all current data" above
+        if(fbReady){ try{ await fbDb.ref(CUSTOMERS_KEY).set(restoredCustomers); }catch(err){ console.error("Customer restore error", err); } }
+        CUSTOMERS = restoredCustomers;
+        saveCustomersLocalCache();
+        customerNote = `, ${Object.keys(restoredCustomers).length} customers`;
+      }
+      backupMsg.innerHTML = `<span style="color:var(--ok);">Backup restored — ${STATE.sales.length} sale lines${customerNote} loaded.</span>`;
       renderUsers(app);
     }catch(err){
       backupMsg.innerHTML = `<span style="color:var(--danger);">Couldn't restore: ${escapeHtml(err.message||String(err))}</span>`;
@@ -4993,6 +5150,7 @@ window.addEventListener("afterprint", ()=>{
 (async function init(){
   render();
   await loadState();
+  await loadCustomers();
   render();
 })();
 </script>
