@@ -1255,6 +1255,8 @@ function showSelectPrompt(title, message, options, emptyLabel){
 
 /* ============================= RENDER SHELL ============================= */
 const MANUAL_SALES_EVENT = "Manual Sales"; // special event value: orders go through an approval cycle before Payments, and are excluded from SLA math and Stock Control deductions
+const SUBSCRIPTION_GIFT_EVENT = "New Subscription"; // category used for gift transactions handled directly from the Subscriptions page
+const MILESTONE_GIFT_EVENT = "Milestone"; // category used for gift transactions handled directly from the Milestone Gifts page
 
 const TABS = [
   {id:"dashboard", label:"Dashboard"},
@@ -2318,8 +2320,6 @@ function freshNewSale(){
     event: ev ? ev.name : "",
     salesMember: "",
     notes: "",
-    giftApplied: false,
-    redeemedAwardIds: [],
     lines: [freshLine()]
   };
 }
@@ -2463,61 +2463,11 @@ function renderNewSale(app){
     const id = f.userId.trim();
     if(!id){ hintEl.innerHTML = ""; return; }
     const match = lookupCustomer(id);
-    const sub = lookupUnclaimedGift(id);
-    const subGift = resolveGiftForSub(sub);
-    const milestoneAwards = unredeemedMilestoneAwardsForUser(id).filter(a=>a.gift.type==="discount");
-
-    function giftBannerHtml(gift, key, applied){
-      // Only Discount-type gifts appear in Orders — Item (and any legacy
-      // Product-type) gifts are handled directly from their own page instead.
-      if(!gift || gift.type!=="discount") return "";
-      return `
-        <div class="gift-banner" data-gift-key="${escapeHtml(key)}" style="margin-top:6px;padding:8px;border:1px dashed var(--accent);border-radius:7px;background:var(--accent-tint);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="color:#7a4c17;font-weight:600;">🎁 Eligible for gift: ${escapeHtml(gift.name)}${gift.type==='discount'?` (${gift.discountPct}% off)`:''}</span>
-          <button class="btn primary sm" data-apply-gift="${escapeHtml(key)}" ${applied?"disabled":""}>${applied?"Added":(gift.type==='discount'?"Apply discount":"Add to order")}</button>
-        </div>
-      `;
-    }
-    function applyGiftToOrder(gift){
-      if(gift.type==="discount"){
-        const emptyLine = f.lines.find(l=>!l.productName);
-        const line = emptyLine || freshLine();
-        line.productName = gift.name;
-        line.qty = 1;
-        line.discountPct = gift.discountPct;
-        line.priceOverride = null;
-        line.isGift = true;
-        line.customPrice = null;
-        if(!emptyLine) f.lines.push(line);
-      }
-    }
-
-    let giftBanners = "";
-    if(sub && subGift) giftBanners += giftBannerHtml(subGift, "sub", !!f.giftApplied);
-    milestoneAwards.forEach(a=>{
-      giftBanners += giftBannerHtml(a.gift, `award:${a.id}`, (f.redeemedAwardIds||[]).includes(a.id));
-    });
 
     if(match){
       const roleText = match.role || "Other";
       const uniText = (roleText==="Student" && match.university) ? `, ${match.university}` : "";
-      hintEl.innerHTML = `<span style="color:var(--ok);">&#10003; ${escapeHtml(match.name)} — ${escapeHtml(roleText)}${escapeHtml(uniText)}</span>${giftBanners}`;
-      hintEl.querySelectorAll("[data-apply-gift]").forEach(btn=>btn.addEventListener("click", ()=>{
-        const key = btn.dataset.applyGift;
-        if(key==="sub"){
-          applyGiftToOrder(subGift);
-          f.giftApplied = true;
-        } else if(key.startsWith("award:")){
-          const awardId = key.slice("award:".length);
-          const a = milestoneAwards.find(x=>x.id===awardId);
-          if(a){
-            applyGiftToOrder(a.gift);
-            if(!f.redeemedAwardIds) f.redeemedAwardIds = [];
-            f.redeemedAwardIds.push(awardId);
-          }
-        }
-        render();
-      }));
+      hintEl.innerHTML = `<span style="color:var(--ok);">&#10003; ${escapeHtml(match.name)} — ${escapeHtml(roleText)}${escapeHtml(uniText)}</span>`;
       return;
     }
     hintEl.innerHTML = `
@@ -2715,14 +2665,6 @@ function renderNewSale(app){
         STATE.timing[f.invoiceNo].paidAt = STATE.timing[f.invoiceNo].createdAt;
       }
     }
-    if(f.giftApplied){
-      const key = f.userId.trim();
-      const subRec = STATE.subscriptions[key] || STATE.subscriptions[key.toLowerCase()];
-      if(subRec) subRec.claimed = true;
-    }
-    if(f.redeemedAwardIds && f.redeemedAwardIds.length){
-      f.redeemedAwardIds.forEach(awardId=>markMilestoneAwardRedeemed(awardId));
-    }
     await saveState();
     const savedNo = f.invoiceNo;
     newSaleForm = freshNewSale();
@@ -2752,12 +2694,13 @@ function renderSubscriptions(app){
   app.innerHTML = `
     <section style="margin-bottom:26px;">
       <h2 class="section-title">New Subscription</h2>
-      <p class="section-desc">Sign up a customer and pick their free gift. This also adds them straight to the Customer Directory. Once saved, entering their User ID on the Orders page will show they're eligible for that gift — one time only.</p>
+      <p class="section-desc">Sign up a customer and pick their free gift. If their User ID already exists in the Customer Directory, their details auto-fill below. All gifts (Discount and Item alike) are handled right here on this page — nothing gets added to an Order.</p>
       <div class="card" style="max-width:560px;">
         <div class="grid cols-2">
           <div class="field"><label class="field-label">User ID</label><input id="sub-userid" placeholder="e.g. u-104" value="${escapeHtml(newSubForm.userId)}"></div>
           <div class="field"><label class="field-label">Name</label><input id="sub-name" placeholder="Customer name" value="${escapeHtml(newSubForm.name)}"></div>
         </div>
+        <div id="sub-existing-note" style="margin:-8px 0 10px;font-size:12px;"></div>
         <div class="grid cols-2">
           <div class="field"><label class="field-label">Phone (optional)</label><input id="sub-phone" placeholder="Phone number" value="${escapeHtml(newSubForm.phone)}"></div>
           <div class="field"><label class="field-label">Type</label>
@@ -2792,19 +2735,16 @@ function renderSubscriptions(app){
         <h2 class="section-title" style="margin:0;">All subscriptions</h2>
         <button class="btn ghost sm" id="sub-export" ${subs.length===0?"disabled":""}>Export to Excel</button>
       </div>
-      <p class="section-desc">Includes whether each person was a brand-new customer or already existed when they subscribed. Item gifts are handed over directly here, not through Orders.</p>
+      <p class="section-desc">Includes whether each person was a brand-new customer or already existed when they subscribed. Handling a gift here logs it in the Sales Log (as "New Subscription") and deducts stock if it's a real product — no order needed.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>User ID</th><th>Name</th><th>Type</th><th>Gift</th><th>Customer</th><th>Status</th><th></th></tr></thead>
           <tbody>
           ${subs.length ? subs.map(([userId,s])=>{
             const gift = resolveGiftForSub(s);
-            const isItemGift = gift && gift.type!=="discount";
             let statusCell;
             if(s.claimed){
-              statusCell = isItemGift
-                ? `<span class="badge muted">Handed over${s.handedBy?` by ${escapeHtml(s.handedBy)}`:""}</span>`
-                : `<span class="badge muted">Claimed</span>`;
+              statusCell = `<span class="badge muted">Handled${s.handedBy?` by ${escapeHtml(s.handedBy)}`:""}</span>`;
             } else {
               statusCell = `<span class="badge ok">Available</span>`;
             }
@@ -2817,7 +2757,7 @@ function renderSubscriptions(app){
               <td><span class="badge ${s.isNewUser?'ok':'muted'}">${s.isNewUser?"New user":"Old user"}</span></td>
               <td>${statusCell}</td>
               <td style="display:flex;gap:6px;flex-wrap:wrap;">
-                ${isItemGift && !s.claimed ? `<button class="btn primary sm" data-hand-gift="${escapeHtml(userId)}">Mark as handed over</button>` : ""}
+                ${!s.claimed && gift ? `<button class="btn primary sm" data-hand-gift="${escapeHtml(userId)}">Handle gift</button>` : ""}
                 <button class="btn danger-ghost sm" data-del-sub="${escapeHtml(userId)}">Delete</button>
               </td>
             </tr>`;
@@ -2828,7 +2768,21 @@ function renderSubscriptions(app){
     </section>
   `;
 
-  document.getElementById("sub-userid").addEventListener("input", e=>{ newSubForm.userId = e.target.value; });
+  document.getElementById("sub-userid").addEventListener("input", e=>{
+    newSubForm.userId = e.target.value;
+    const noteEl = document.getElementById("sub-existing-note");
+    const match = lookupCustomer(newSubForm.userId.trim());
+    if(match){
+      newSubForm.name = match.name;
+      newSubForm.phone = match.phone || "";
+      newSubForm.role = match.role || "Other";
+      newSubForm.university = match.university || "";
+      noteEl.innerHTML = `<span style="color:var(--ok);">&#10003; Found in Customer Directory — details filled in below.</span>`;
+      renderSubscriptions(app);
+    } else if(noteEl){
+      noteEl.innerHTML = newSubForm.userId.trim() ? `<span style="color:var(--warn);">New — not in Customer Directory yet.</span>` : "";
+    }
+  });
   document.getElementById("sub-name").addEventListener("input", e=>{ newSubForm.name = e.target.value; });
   document.getElementById("sub-phone").addEventListener("input", e=>{ newSubForm.phone = e.target.value; });
   document.getElementById("sub-role").addEventListener("change", e=>{
@@ -2874,7 +2828,10 @@ function renderSubscriptions(app){
     const userId = b.dataset.handGift;
     const s = STATE.subscriptions[userId];
     if(!s) return;
-    if(!(await showConfirm("Hand over gift", `Confirm "${s.giftName}" has been physically handed to ${s.name}?`, "Confirm"))) return;
+    const gift = resolveGiftForSub(s);
+    if(!gift){ await showAlert("Notice", "That gift no longer exists."); return; }
+    if(!(await showConfirm("Handle gift", `Confirm "${gift.name}" has been given to ${s.name}? This logs it in the Sales Log${gift.type==='discount'?' and deducts stock':''}.`, "Confirm"))) return;
+    recordGiftFulfillment(SUBSCRIPTION_GIFT_EVENT, userId, s.name, gift);
     s.claimed = true;
     s.handedBy = currentUser().name;
     s.handedDate = todayISO();
@@ -2897,7 +2854,7 @@ function exportSubscriptionsExcel(subs){
       "Gift": s.giftName||"",
       "Gift Type": gift ? gift.type : "",
       "Customer Status": s.isNewUser ? "New user" : "Old user",
-      "Gift Status": s.claimed ? (gift && gift.type!=="discount" ? "Handed over" : "Claimed") : "Available",
+      "Gift Status": s.claimed ? "Handled" : "Available",
       "Handed Over By": s.handedBy||"",
       "Handed Over Date": s.handedDate||"",
       "Subscribed Date": s.date||"",
@@ -3006,8 +2963,8 @@ function renderMilestones(app){
     </section>
 
     <section style="margin-top:26px;">
-      <h2 class="section-title">Pending item hand-overs</h2>
-      <p class="section-desc">Awarded "Item" gifts (like a mug or pen) aren't handled through Orders — mark them off here once physically given to the customer.</p>
+      <h2 class="section-title">Pending gift hand-overs</h2>
+      <p class="section-desc">All awarded gifts are handled right here — mark them off once given to the customer. This logs it in the Sales Log and deducts stock if it's a real product.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>User ID</th><th>Gift</th><th>Awarded</th><th colspan="2"></th></tr></thead>
@@ -3016,14 +2973,14 @@ function renderMilestones(app){
             let pending = STATE.milestoneAwards
               .filter(a=>!a.redeemed)
               .map(a=>({...a, gift: STATE.gifts.find(g=>g.id===a.giftId)}))
-              .filter(a=>a.gift && a.gift.type!=="discount");
+              .filter(a=>a.gift);
             if(filterKey) pending = pending.filter(a=>a.userId.toLowerCase().includes(filterKey));
             return pending.length ? pending.map(a=>`
               <tr>
                 <td class="mono">${escapeHtml(a.userId)}</td>
-                <td>${escapeHtml(a.gift.name)} <span class="badge tint">item</span></td>
+                <td>${escapeHtml(a.gift.name)} <span class="badge ${a.gift.type==='discount'?'accent':'tint'}">${a.gift.type}</span></td>
                 <td>${escapeHtml(a.date||"")}</td>
-                <td><button class="btn primary sm" data-hand-award="${escapeHtml(a.id)}">Mark as handed over</button></td>
+                <td><button class="btn primary sm" data-hand-award="${escapeHtml(a.id)}">Handle gift</button></td>
                 <td><button class="btn danger-ghost sm" data-del-award="${escapeHtml(a.id)}">Delete</button></td>
               </tr>
             `).join("") : `<tr><td colspan="5"><div class="empty-state"><div class="glyph">🎁</div>Nothing pending hand-over.</div></td></tr>`;
@@ -3098,7 +3055,10 @@ function renderMilestones(app){
   app.querySelectorAll("[data-hand-award]").forEach(b=>b.addEventListener("click", async ()=>{
     const award = STATE.milestoneAwards.find(x=>x.id===b.dataset.handAward);
     const gift = award ? STATE.gifts.find(g=>g.id===award.giftId) : null;
-    if(!(await showConfirm("Hand over gift", `Confirm "${gift?gift.name:"this gift"}" has been physically handed to ${award?award.userId:""}?`, "Confirm"))) return;
+    if(!award || !gift) return;
+    if(!(await showConfirm("Handle gift", `Confirm "${gift.name}" has been given to ${award.userId}? This logs it in the Sales Log${gift.type==='discount'?' and deducts stock':''}.`, "Confirm"))) return;
+    const cust = lookupCustomer(award.userId);
+    recordGiftFulfillment(MILESTONE_GIFT_EVENT, award.userId, cust?cust.name:award.userId, gift);
     markMilestoneAwardHandedOver(b.dataset.handAward, currentUser().name);
     await saveState();
     renderMilestones(app);
@@ -3725,16 +3685,6 @@ function lookupCustomer(userId){
   if(!key) return null;
   return CUSTOMERS[key] || CUSTOMERS[key.toLowerCase()] || null;
 }
-/* An unclaimed subscription gift for this User ID, if any — surfaced as a
-   one-time free line item on the Orders page. */
-function lookupUnclaimedGift(userId){
-  if(!userId) return null;
-  const key = String(userId).trim();
-  if(!key) return null;
-  const sub = STATE.subscriptions[key] || STATE.subscriptions[key.toLowerCase()];
-  if(!sub || sub.claimed) return null;
-  return sub;
-}
 /* Resolves a subscription's actual gift object. Matches by ID first (the
    reliable way — a Discount and a Product gift can share the same name
    since Discount now targets a product too), falling back to name only for
@@ -3790,23 +3740,45 @@ function eligibleMilestoneSlots(){
 function recordMilestoneAward(userId, milestoneId, giftId){
   STATE.milestoneAwards.push({ id: uid(), userId: String(userId).trim(), milestoneId, giftId, date: todayISO(), redeemed:false });
 }
-/* Awarded gifts not yet redeemed/handed over, resolved with their actual
-   gift object (skipping any whose gift was since deleted). */
-function unredeemedMilestoneAwardsForUser(userId){
-  const key = String(userId||"").trim().toLowerCase();
-  if(!key) return [];
-  return STATE.milestoneAwards
-    .filter(a=>String(a.userId||"").trim().toLowerCase()===key && !a.redeemed)
-    .map(a=>({ ...a, gift: STATE.gifts.find(g=>g.id===a.giftId) }))
-    .filter(a=>a.gift);
-}
-function markMilestoneAwardRedeemed(awardId){
-  const a = STATE.milestoneAwards.find(x=>x.id===awardId);
-  if(a) a.redeemed = true;
-}
 function markMilestoneAwardHandedOver(awardId, handedBy){
   const a = STATE.milestoneAwards.find(x=>x.id===awardId);
   if(a){ a.redeemed = true; a.handedBy = handedBy; a.handedDate = todayISO(); }
+}
+
+/* Handling a gift directly from the Subscriptions or Milestone Gifts page
+   (rather than through an Order) still needs to show up as a real
+   transaction — it should count against stock, appear in the Sales Log,
+   and reduce Gross Profit by the product's COGS, exactly like giving it
+   away in an order would have. This creates that sales-log entry directly:
+   no invoice number is shown (these aren't real orders), it's tagged with
+   a category ("New Subscription" / "Milestone") instead of a normal event
+   so it's easy to filter, and it's marked Paid + Delivered immediately
+   since the hand-over already happened in person. Because no timing entry
+   is created, it's automatically excluded from SLA averages too — there's
+   no "waiting for payment" or "waiting for delivery" here, it's instant. */
+function recordGiftFulfillment(category, userId, customerName, gift){
+  const product = productByName[gift.name];
+  const unitPrice = (gift.type==="discount" && product) ? product.price : 0;
+  const discountPct = gift.type==="discount" ? 100 : 0;
+  const tag = "GIFT-" + uid(); // unique internally so invoice-grouping logic still works correctly; never shown in the UI
+  STATE.sales.push({
+    id: uid(),
+    invoiceNo: tag,
+    date: todayISO(),
+    customer: customerName || userId,
+    userId: userId,
+    event: category,
+    salesMember: currentUser().name,
+    approvalStatus: "Approved",
+    paymentStatus: "Paid",
+    paymentMethod: "Free (Gift)",
+    notes: "",
+    productName: gift.name,
+    qty: 1,
+    unitPrice,
+    discountPct,
+  });
+  STATE.delivery[tag] = "Delivered"; // handed over in person at the same moment — nothing left to deliver
 }
 
 /* Sums how much of a product this customer has already ordered across every
@@ -3953,6 +3925,8 @@ function renderSalesLog(app){
           <select id="log-event">
             <option value="" ${!saleLogFilter.event?"selected":""}>All events</option>
             <option value="${MANUAL_SALES_EVENT}" ${saleLogFilter.event===MANUAL_SALES_EVENT?"selected":""}>${MANUAL_SALES_EVENT}</option>
+            <option value="${SUBSCRIPTION_GIFT_EVENT}" ${saleLogFilter.event===SUBSCRIPTION_GIFT_EVENT?"selected":""}>${SUBSCRIPTION_GIFT_EVENT}</option>
+            <option value="${MILESTONE_GIFT_EVENT}" ${saleLogFilter.event===MILESTONE_GIFT_EVENT?"selected":""}>${MILESTONE_GIFT_EVENT}</option>
             ${STATE.events.map(ev=>`<option value="${escapeHtml(ev.name)}" ${saleLogFilter.event===ev.name?"selected":""}>${escapeHtml(ev.name)}</option>`).join("")}
           </select>
         </div>
@@ -3978,8 +3952,10 @@ function renderSalesLog(app){
       const {lineTotal} = lineCalc(s.qty,s.unitPrice,s.discountPct);
       const delStatus = deliveryStatusForInvoice(s.invoiceNo);
       const delBadge = delStatus==="Delivered" ? "ok" : (delStatus==="Pending" ? "warn" : "muted");
+      const isGiftLog = s.event===SUBSCRIPTION_GIFT_EVENT || s.event===MILESTONE_GIFT_EVENT;
+      const invoiceCell = isGiftLog ? `<span class="badge accent">${escapeHtml(s.event)}</span>` : escapeHtml(s.invoiceNo);
       return `<tr>
-        <td class="mono">${escapeHtml(s.invoiceNo)}</td>
+        <td class="mono">${invoiceCell}</td>
         <td class="mono">${escapeHtml(s.date)}</td>
         <td>${escapeHtml(s.customer)}</td>
         <td>${escapeHtml(s.productName)}</td>
