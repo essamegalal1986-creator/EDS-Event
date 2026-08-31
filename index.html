@@ -482,6 +482,19 @@ let activeTab = "dashboard";
 let authedUserId = null; // reset on every page load — login is required each visit
 
 const STORAGE_KEY = "eds_console_state_v1";
+/* Which user account is active is a property of THIS device/browser, not
+   of the shared team data — it must never sync. It used to live inside
+   STATE.currentUserId, which meant every live update from ANY device
+   (via applyRemoteState) overwrote it everywhere, silently switching who
+   everyone appeared to be logged in as the moment anyone else logged in.
+   Kept local-only from here on. */
+const LOCAL_USER_KEY = "eds_console_local_user_v1";
+let localCurrentUserId = "";
+try{ localCurrentUserId = localStorage.getItem(LOCAL_USER_KEY) || ""; }catch(e){}
+function setLocalCurrentUserId(id){
+  localCurrentUserId = id;
+  try{ localStorage.setItem(LOCAL_USER_KEY, id); }catch(e){}
+}
 const ADMIN_ID = "admin";
 const DEFAULT_ADMIN_PASSWORD = "admin123";
 
@@ -554,8 +567,8 @@ function ensureStateDefaults(){
   if(!Array.isArray(STATE.users) || STATE.users.length === 0){
     STATE.users = [{ id: ADMIN_ID, name: "Admin", password: DEFAULT_ADMIN_PASSWORD, access: TABS.map(t=>t.id), canApprove:true }];
   }
-  if(!STATE.currentUserId || !STATE.users.find(u=>u.id===STATE.currentUserId)){
-    STATE.currentUserId = STATE.users[0].id;
+  if(localCurrentUserId && !STATE.users.find(u=>u.id===localCurrentUserId)){
+    setLocalCurrentUserId(STATE.users[0].id);
   }
   pruneOrphanedDelivery();
 }
@@ -674,7 +687,7 @@ async function loadState(){
 }
 
 function currentUser(){
-  return STATE.users.find(u=>u.id===STATE.currentUserId) || STATE.users[0] || {id:ADMIN_ID,name:"Admin",access:TABS.map(t=>t.id)};
+  return STATE.users.find(u=>u.id===localCurrentUserId) || STATE.users[0] || {id:ADMIN_ID,name:"Admin",access:TABS.map(t=>t.id)};
 }
 function hasAccess(tabId){
   const u = currentUser();
@@ -1386,16 +1399,15 @@ function renderTabs(){
     switchRow.innerHTML = `
       <label for="user-switch-select">Viewing as</label>
       <select id="user-switch-select">
-        ${STATE.users.map(u=>`<option value="${escapeHtml(u.id)}" ${u.id===STATE.currentUserId?"selected":""}>${escapeHtml(u.name)}</option>`).join("")}
+        ${STATE.users.map(u=>`<option value="${escapeHtml(u.id)}" ${u.id===localCurrentUserId?"selected":""}>${escapeHtml(u.name)}</option>`).join("")}
       </select>
     `;
-    document.getElementById("user-switch-select").addEventListener("change", async e=>{
-      STATE.currentUserId = e.target.value;
+    document.getElementById("user-switch-select").addEventListener("change", e=>{
+      setLocalCurrentUserId(e.target.value);
       if(!hasAccess(activeTab)){
         const first = TABS.find(t=>hasAccess(t.id));
         activeTab = first ? first.id : "dashboard";
       }
-      await saveState();
       render();
     });
   } else {
@@ -1443,10 +1455,9 @@ function renderLogin(app){
       return;
     }
     authedUserId = match.id;
-    STATE.currentUserId = match.id;
+    setLocalCurrentUserId(match.id);
     activeTab = TABS.find(t=>hasAccess(t.id)) ? (hasAccess("dashboard")?"dashboard":TABS.find(t=>hasAccess(t.id)).id) : "dashboard";
     document.getElementById("app-header").style.display = "block";
-    await saveState();
     render();
   }
   document.getElementById("login-btn").addEventListener("click", attempt);
@@ -5090,7 +5101,7 @@ function renderUsers(app){
     const u = STATE.users.find(x=>x.id===id);
     if(!(await confirmDelete("Remove user", `Remove user "${u?u.name:""}"?`))) return;
     STATE.users = STATE.users.filter(x=>x.id!==id);
-    if(STATE.currentUserId===id) STATE.currentUserId = ADMIN_ID;
+    if(localCurrentUserId===id) setLocalCurrentUserId(ADMIN_ID);
     await saveState();
     renderUsers(app);
   }));
