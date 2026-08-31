@@ -1084,8 +1084,13 @@ function avgOrderCadence(allowedInvoices){
   return avgOf(diffs);
 }
 // Avg time from order creation to payment confirmation — shown on Payments.
+// Excludes orders that were auto-settled at $0 (e.g. entirely free gift
+// lines) — those have paidAt set equal to createdAt on purpose since there
+// was nothing to actually collect, and averaging in a pile of exact-zero
+// entries would drag this down and make it meaningless for orders that
+// genuinely did wait on a real payment.
 function avgOrderToPayment(allowedInvoices){
-  return avgOf(timingEntries(allowedInvoices).filter(([,t])=>t.createdAt && t.paidAt).map(([,t])=>t.paidAt-t.createdAt));
+  return avgOf(timingEntries(allowedInvoices).filter(([,t])=>t.createdAt && t.paidAt && t.paidAt!==t.createdAt).map(([,t])=>t.paidAt-t.createdAt));
 }
 // Avg time from payment confirmation to delivery confirmation — shown on Delivery.
 function avgPaymentToDelivery(allowedInvoices){
