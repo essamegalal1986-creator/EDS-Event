@@ -334,7 +334,7 @@
   @page eds-receipt{ size: 75mm auto; margin: 0; }
   #print-invoice-area{ display:none; }
   #print-receipt-area{ display:none; page: eds-receipt; }
-  .receipt{ width:100%; max-width:280px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; padding:3mm; box-sizing:border-box; }
+  .receipt{ width:100%; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; padding:3mm; box-sizing:border-box; }
   /* NOT justify-content:space-between — that stretches to fill whatever
      width the print engine THINKS the page is. Many thermal/receipt
      printer drivers ignore the narrow @page size hint and default to a
@@ -343,8 +343,13 @@
      keeps label and value close together regardless of what width the
      driver assumes, so nothing gets cut off. */
   .receipt .rline{ display:flex; justify-content:flex-start; gap:10px; padding:1px 0; }
-  .receipt .rline > span:first-child{ flex:0 0 auto; min-width:64px; }
+  /* :first-child+:last-child (label + value) only applies flex:0 0 auto to
+     the label — a solo span (a product name with no separate value, like
+     .rline-name below) must NOT get flex-shrink:0, or long names can't
+     wrap and get cut off at the paper's edge instead. */
+  .receipt .rline > span:first-child:not(:only-child){ flex:0 0 auto; min-width:64px; }
   .receipt .rline > span:last-child{ text-align:left; white-space:normal; word-break:break-word; }
+  .receipt .rline-name{ padding:1px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
   .receipt .rline-sub{ font-size:10px; color:#333; }
   .receipt .r-center{ text-align:center; }
   .receipt .r-bold{ font-weight:700; }
@@ -4121,7 +4126,7 @@ function receiptMarkup(no, rows, copyLabel){
   const items = rows.map(r=>{
     const {lineTotal} = lineCalc(r.qty, r.unitPrice, r.discountPct);
     return `
-      <div class="rline"><span>${escapeHtml(r.productName)}</span></div>
+      <div class="rline-name">${escapeHtml(r.productName)}</div>
       <div class="rline rline-sub"><span>${r.qty} x ${fmtEGP(r.unitPrice)}</span><span>${fmtEGP(lineTotal)}</span></div>
     `;
   }).join("");
