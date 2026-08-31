@@ -334,9 +334,17 @@
   @page eds-receipt{ size: 75mm auto; margin: 0; }
   #print-invoice-area{ display:none; }
   #print-receipt-area{ display:none; page: eds-receipt; }
-  .receipt{ width:100%; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; padding:3mm; box-sizing:border-box; }
-  .receipt .rline{ display:flex; justify-content:space-between; gap:8px; padding:1px 0; }
-  .receipt .rline > span:last-child{ text-align:right; white-space:nowrap; }
+  .receipt{ width:100%; max-width:280px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; padding:3mm; box-sizing:border-box; }
+  /* NOT justify-content:space-between — that stretches to fill whatever
+     width the print engine THINKS the page is. Many thermal/receipt
+     printer drivers ignore the narrow @page size hint and default to a
+     much wider page (e.g. A4), which pushed the value clear across that
+     assumed width and off the edge of the actual narrow paper roll. This
+     keeps label and value close together regardless of what width the
+     driver assumes, so nothing gets cut off. */
+  .receipt .rline{ display:flex; justify-content:flex-start; gap:10px; padding:1px 0; }
+  .receipt .rline > span:first-child{ flex:0 0 auto; min-width:64px; }
+  .receipt .rline > span:last-child{ text-align:left; white-space:normal; word-break:break-word; }
   .receipt .rline-sub{ font-size:10px; color:#333; }
   .receipt .r-center{ text-align:center; }
   .receipt .r-bold{ font-weight:700; }
