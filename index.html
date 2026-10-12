@@ -334,7 +334,7 @@
   @page eds-receipt{ size: 75mm auto; margin: 0; }
   #print-invoice-area{ display:none; }
   #print-receipt-area{ display:none; page: eds-receipt; }
-  .receipt{ width:100%; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; padding:3mm; box-sizing:border-box; }
+  .receipt{ width:72mm; margin:0; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#000; line-height:1.5; padding:2mm 3mm; box-sizing:border-box; }
   /* NOT justify-content:space-between — that stretches to fill whatever
      width the print engine THINKS the page is. Many thermal/receipt
      printer drivers ignore the narrow @page size hint and default to a
@@ -1507,7 +1507,28 @@ function rerenderPreservingFocus(renderFn){
   }
 }
 
+function syncPayDraftsFromDOM(){
+  /* Before any re-render, copy what is currently shown in the split-payment rows
+     back into the drafts so a background refresh never resets the chosen method. */
+  try{
+    document.querySelectorAll("[data-split]").forEach(row=>{
+      const id = row.dataset.split;
+      for(const st of [manualPayDraft, paymentDraftForms]){
+        for(const no in st){
+          const d = st[no].find(x=>x.id===id);
+          if(d){
+            const m = row.querySelector(".split-method"), a = row.querySelector(".split-amount");
+            if(m) d.method = m.value;
+            if(a) d.amount = a.value;
+            return;
+          }
+        }
+      }
+    });
+  }catch(e){}
+}
 function render(){
+  syncPayDraftsFromDOM();
   const app = document.getElementById("app");
   if(!loaded){ document.getElementById("app-header").style.display="none"; app.innerHTML = `<div class="empty-state">Loading console…</div>`; return; }
   if(!authedUserId){ renderLogin(app); return; }
@@ -3358,6 +3379,7 @@ function renderManualOrders(app){
       const id = row.dataset.split;
       const d = draft.find(x=>x.id===id);
       row.querySelector(".split-method").addEventListener("change", e=>{ d.method=e.target.value; });
+      row.querySelector(".split-method").addEventListener("input", e=>{ d.method=e.target.value; });
       row.querySelector(".split-amount").addEventListener("input", e=>{ d.amount=e.target.value; refresh(); });
       const rm = row.querySelector("[data-remove-split]");
       if(rm) rm.addEventListener("click", ()=>{
@@ -3601,6 +3623,7 @@ function renderPayments(app){
       const id = row.dataset.split;
       const d = draft.find(x=>x.id===id);
       row.querySelector(".split-method").addEventListener("change", e=>{ d.method=e.target.value; });
+      row.querySelector(".split-method").addEventListener("input", e=>{ d.method=e.target.value; });
       row.querySelector(".split-amount").addEventListener("input", e=>{ d.amount=e.target.value; refresh(); });
       const rm = row.querySelector("[data-remove-split]");
       if(rm) rm.addEventListener("click", ()=>{
@@ -4177,8 +4200,10 @@ const RECEIPT_STANDALONE_CSS = `
   .r-center{text-align:center;}
   .r-bold{font-weight:700;}
   .r-dash{border-top:1px dashed #000;margin:5px 0;}
-  .rline{display:flex;justify-content:space-between;gap:8px;padding:1px 0;}
-  .rline>span:last-child{text-align:right;white-space:nowrap;}
+  .rline{display:flex;justify-content:flex-start;gap:10px;padding:1px 0;}
+  .rline>span:first-child:not(:only-child){flex:0 0 auto;min-width:64px;}
+  .rline>span:last-child{text-align:left;white-space:normal;word-break:break-word;}
+  .rline-name{padding:1px 0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;}
   .rline-sub{font-size:10px;color:#333;}
 `;
 function buildReceiptStandaloneHTML(no, rows, copyLabel){
@@ -4732,6 +4757,14 @@ function renderSettings(app){
     </section>
 
     <section style="margin-bottom:26px;">
+      <h2 class="section-title">Reset all data</h2>
+      <p class="section-desc">Deletes all orders, sales log, payments, delivery, restock/reorder, approvals, timing, New Subscription and Milestone records, events, sales members, universities, gifts and milestones. <b>Kept:</b> customers, users, products (plus their categories and suppliers).</p>
+      <div class="card" style="max-width:420px;">
+        <button class="btn sm" id="reset-all-data" style="background:#b3261e;color:#fff;border-color:#b3261e;">Delete everything except customers, users &amp; products</button>
+      </div>
+    </section>
+
+    <section style="margin-bottom:26px;">
       <h2 class="section-title">Order limits</h2>
       <p class="section-desc">A product's "Max qty / customer" (set on its card in Products) is enforced when saving an order. If someone tries to order more than the limit, they'll need this password to override it.</p>
       <div class="card" style="max-width:420px;">
@@ -4846,6 +4879,19 @@ function renderSettings(app){
     await saveState();
     renderSettings(app);
   }));
+
+  document.getElementById("reset-all-data").addEventListener("click", async ()=>{
+    if(!await confirmDelete("Reset all data", "This permanently deletes ALL orders, sales log, payments, delivery, restock, approvals, subscriptions, milestones, events, sales members, universities and gifts for everyone.\n\nCustomers, users and products are kept.\n\nThis cannot be undone.", "Delete everything")) return;
+    if(!await showConfirm("Are you absolutely sure?", "Last check — this wipes all transactional data for every user.", "Yes, wipe it")) return;
+    STATE.sales = [];
+    ["restock","reorder","delivery","paymentSplits","manualApprovals","timing","subscriptions"].forEach(k=>{ STATE[k] = {}; });
+    ["milestoneAwards","events","salesMembers","universities","gifts","milestones"].forEach(k=>{ STATE[k] = []; });
+    try{ recentlyPaidInvoices = []; manualPayDraft = {}; paymentDraftForms = {}; }catch(e){}
+    rebuildIndexes();
+    await saveState();
+    await showAlert("Done", "All data was reset. Customers, users and products were kept.");
+    render();
+  });
 
   document.getElementById("save-override-password").addEventListener("click", async ()=>{
     const val = document.getElementById("override-password").value;
